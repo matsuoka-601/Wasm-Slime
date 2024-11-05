@@ -12,6 +12,6 @@ extern "C" {
 
 #[wasm_bindgen]
 pub fn sum(input: &[i32]) -> i32 {
-    input.par_iter().map(|&x| x).sum()
+    input.iter().map(|&x| x).sum()
     // return 0;
 }
