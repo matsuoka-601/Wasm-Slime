@@ -1,0 +1,29 @@
+on:
+  push:
+    branches:
+      - master
+
+name: Build and deploy
+
+jobs:
+   build-and-deploy:
+     runs-on: ubuntu-latest
+     steps: 
+       - uses: actions/checkout@v3
+       - uses: jetli/wasm-pack-action@v0.4.0
+       - uses: actions-rs/toolchain@v1
+         with: 
+           profile: minimal
+           toolchain: nightly
+           override: true
+           components: rust-src
+       - name: Build
+         run: |
+          npm install
+          npm run build
+       - name: Deploy
+         uses: JamesIves/github-pages-deploy-action@v4.3.3
+         with: 
+           branch: deploy
+           folder: dist
+           clean-exclude: netlify.toml
