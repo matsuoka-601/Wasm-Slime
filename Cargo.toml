@@ -21,6 +21,15 @@ wasm-bindgen-rayon = { version = "1.2" }
 # code size when deploying.
 console_error_panic_hook = { version = "0.1.7", optional = true }
 
+web-sys = { version = "0.3", features = [
+  'OffscreenCanvas',
+  'WebGlBuffer',
+  'WebGl2RenderingContext',
+  'WebGlUniformLocation',
+  'WebGlProgram',
+  'WebGlShader',
+] }
+
 [dev-dependencies]
 wasm-bindgen-test = "0.3.34"
 
@@ -28,6 +37,7 @@ wasm-bindgen-test = "0.3.34"
 features = ["nightly"]
 targets = ["wasm32-unknown-unknown"]
 rustc-args = ["-C", "target-feature=+atomics,+bulk-memory"]
+
 
 [profile.release]
 # Tell `rustc` to optimize for small code size.
