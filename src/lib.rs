@@ -1,21 +1,15 @@
 mod utils;
+mod solver;
 
-pub use wasm_bindgen_rayon::init_thread_pool;
-use rayon::iter::IntoParallelRefIterator;
-use rayon::iter::ParallelIterator;
 use wasm_bindgen::prelude::*;
+pub use wasm_bindgen_rayon::init_thread_pool;
 
-use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader};
+use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, WebGlBuffer};
+
 
 #[wasm_bindgen]
 extern "C" {
     fn alert(s: &str);
-}
-
-#[wasm_bindgen]
-pub fn sum(input: &[i32]) -> i32 {
-    input.par_iter().map(|&x| x).sum()
-    // return 0;
 }
 
 static VERTEX_SHADER: &'static str = r#"
@@ -42,7 +36,14 @@ static FRAGMENT_SHADER: &'static str = r#"
 
 #[wasm_bindgen]
 pub struct Simulation {
-    gl: WebGl2RenderingContext
+    gl: WebGl2RenderingContext, 
+    buffers: BufferPair, 
+    state: solver::State, 
+}
+
+pub struct BufferPair {
+    color_buffer: WebGlBuffer, 
+    position_buffer: WebGlBuffer, 
 }
 
 #[wasm_bindgen]
@@ -51,29 +52,103 @@ impl Simulation {
     pub fn new(
         canvas: &web_sys::OffscreenCanvas
     ) -> Result<Simulation, JsValue> {
-        let gl = init_webgl(canvas)?;
-        Ok(Simulation { gl })
+        let (gl, buffers) = init_webgl(canvas)?;
+        let state = solver::State::new(1);
+        Ok(Simulation{ gl, buffers, state })
     }
+
+    pub fn draw(&self) {
+        self.gl.clear_color(0.4, 0.4, 0.4, 1.0);
+        self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
+
+        let positions = generate_positions(&self.state.particles, 100.0);
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.position_buffer));
+        unsafe {
+            self.gl.buffer_data_with_array_buffer_view(
+                WebGl2RenderingContext::ARRAY_BUFFER, 
+                &js_sys::Float32Array::view(&positions), 
+                WebGl2RenderingContext::DYNAMIC_DRAW
+            );
+        }
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.color_buffer));
+        let colors = generate_colors(&self.state.particles);
+        unsafe {
+            self.gl.buffer_data_with_array_buffer_view(
+                WebGl2RenderingContext::ARRAY_BUFFER, 
+                &js_sys::Float32Array::view(&colors), 
+                WebGl2RenderingContext::DYNAMIC_DRAW
+            );
+        }
+        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6 * self.state.num_particles as i32);
+    }
+
+    pub fn step(&mut self) {
+        self.state.step();
+    }
+
+}
+
+pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32> {
+    particles.iter().flat_map(|particle|{
+        let x = particle.position.x * scale;
+        let y = particle.position.y * scale;
+        let size = particle.size;
+        vec![
+            x, y, 
+            x + size, y, 
+            x, y + size, 
+            x, y + size, 
+            x + size, y, 
+            x + size, y + size
+        ]
+    }).collect()
+}
+
+pub fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
+    particles.iter().flat_map(|particle|{
+        let r = 0.0;
+        let g = 0.0;
+        let b = 1.0;
+        let a = 1.0;
+        vec![
+            r, g, b, a, 
+            r, g, b, a, 
+            r, g, b, a, 
+            r, g, b, a, 
+            r, g, b, a, 
+            r, g, b, a  
+        ]
+    }).collect()
 }
 
 fn init_webgl(
-    canvas: &web_sys::OffscreenCanvas,
-) -> Result<WebGl2RenderingContext, JsValue> {
+    canvas: &web_sys::OffscreenCanvas
+) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     // set up canvas and webgl context handle
-    canvas.set_width(300);
-    canvas.set_height(300);
+    canvas.set_width(600);
+    canvas.set_height(600);
 
     let gl = canvas
         .get_context("webgl2")?
         .unwrap()
         .dyn_into::<WebGl2RenderingContext>()?;
 
-    let program = init_shader_program(&gl)?;
+    let shader_program = init_shader_program(&gl)?;
 
-    gl.clear_color(0.4, 0.4, 0.4, 1.0); // 背景を黒に設定
+    gl.clear_color(0.4, 0.4, 0.4, 1.0); 
     gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 
-    Ok(gl)
+    let position_buffer = gl.create_buffer().unwrap();
+    let color_buffer = gl.create_buffer().unwrap();
+
+    set_position_attribute(&gl, &shader_program, &position_buffer)?;
+    set_color_attribute(&gl, &shader_program, &color_buffer)?;
+
+    let resolution_location = gl.get_uniform_location(&shader_program, "uResolution").unwrap();
+    gl.uniform2f(Some(&resolution_location), canvas.width() as f32, canvas.height() as f32);
+
+
+    Ok((gl, BufferPair{ position_buffer, color_buffer }))
 }
 
 fn init_shader_program(
@@ -111,4 +186,40 @@ fn compile_shader(
     }
 
     Ok(shader)
+}
+
+fn set_position_attribute(
+    gl: &WebGl2RenderingContext, 
+    program: &WebGlProgram, 
+    buffer: &WebGlBuffer
+) -> Result<(), JsValue>{
+    gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&buffer));
+    let position_location = gl.get_attrib_location(program, "aPosition");
+
+    if position_location >= 0 {
+        gl.vertex_attrib_pointer_with_i32(position_location as u32, 2, WebGl2RenderingContext::FLOAT, false, 0, 0);
+        gl.enable_vertex_attrib_array(position_location as u32);
+    } else {
+        return Err(JsValue::from_str("cannot set position attribute"));
+    }
+
+    return Ok(());
+}
+
+fn set_color_attribute(
+    gl: &WebGl2RenderingContext, 
+    program: &WebGlProgram, 
+    buffer: &WebGlBuffer
+) -> Result<(), JsValue>{
+    gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&buffer));
+    let position_location = gl.get_attrib_location(program, "aColor");
+
+    if position_location >= 0 {
+        gl.vertex_attrib_pointer_with_i32(position_location as u32, 4, WebGl2RenderingContext::FLOAT, false, 0, 0);
+        gl.enable_vertex_attrib_array(position_location as u32);
+    } else {
+        return Err(JsValue::from_str("cannot set color attribute"));
+    }
+
+    return Ok(());
 }

@@ -14,6 +14,10 @@ default = ["console_error_panic_hook"]
 wasm-bindgen = "=0.2.93"
 rayon = "1.8"
 wasm-bindgen-rayon = { version = "1.2" }
+glam = "0.29.2"
+rand = "0.8.3"
+getrandom = { version = "0.2.2", features = ["js"] }
+js-sys = "0.3.27"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -29,6 +33,7 @@ web-sys = { version = "0.3", features = [
   'WebGlProgram',
   'WebGlShader',
 ] }
+
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.34"

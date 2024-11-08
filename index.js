@@ -1,7 +1,7 @@
+import { simd } from 'wasm-feature-detect';
 import { Simulation } from './pkg/rust_fluid.js'
 
 async function run() {
-    console.log("hello");
     const multithread = await import('./pkg/rust_fluid.js');
     await multithread.default();
     await multithread.initThreadPool(12);
@@ -30,6 +30,7 @@ async function run() {
     const canvas = /** @type {HTMLCanvasElement} */(document.getElementById('canvas'));
 
     let sim = new Simulation(canvas);
+    sim.draw();
 }
 
 run();
