@@ -53,7 +53,7 @@ impl Simulation {
         canvas: &web_sys::OffscreenCanvas
     ) -> Result<Simulation, JsValue> {
         let (gl, buffers) = init_webgl(canvas)?;
-        let state = solver::State::new(1);
+        let state = solver::State::new(4000);
         Ok(Simulation{ gl, buffers, state })
     }
 
@@ -61,7 +61,7 @@ impl Simulation {
         self.gl.clear_color(0.4, 0.4, 0.4, 1.0);
         self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 
-        let positions = generate_positions(&self.state.particles, 100.0);
+        let positions = generate_positions(&self.state.particles, 900.0);
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.position_buffer));
         unsafe {
             self.gl.buffer_data_with_array_buffer_view(
@@ -83,7 +83,9 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
-        self.state.step();
+        for i in 0..5 {
+            self.state.step();
+        }
     }
 
 }
@@ -125,8 +127,8 @@ fn init_webgl(
     canvas: &web_sys::OffscreenCanvas
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     // set up canvas and webgl context handle
-    canvas.set_width(600);
-    canvas.set_height(600);
+    canvas.set_width(900);
+    canvas.set_height(900);
 
     let gl = canvas
         .get_context("webgl2")?

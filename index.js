@@ -4,7 +4,7 @@ import { Simulation } from './pkg/rust_fluid.js'
 async function run() {
     const multithread = await import('./pkg/rust_fluid.js');
     await multithread.default();
-    await multithread.initThreadPool(12);
+    await multithread.initThreadPool(16);
 
     // const input = [];
     // const n = 10000000;
@@ -31,6 +31,17 @@ async function run() {
 
     let sim = new Simulation(canvas);
     sim.draw();
+
+    function draw() {
+        let start = performance.now();
+        sim.step();
+        let end = performance.now();
+        console.log(`${end - start}ms`);
+        sim.draw();
+        requestAnimationFrame(draw);
+    }
+
+    draw();
 }
 
 run();
