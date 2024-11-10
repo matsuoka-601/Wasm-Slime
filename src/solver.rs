@@ -63,6 +63,16 @@ extern "C" {
     pub fn log(s: &str);
 }
 
+macro_rules! benchmark {
+    ($code:block) => {{
+        use std::time::Instant;
+        
+        let start = Instant::now(); 
+        $code
+        start.elapsed().as_micros()
+    }};
+}
+
 impl State {
     pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
         let field = Field { height, width };
@@ -72,11 +82,12 @@ impl State {
     }
 
     pub fn step(&mut self) {
-        // let register_t = measure_time(|| {self.cells.register_cells(&self.particles)});
-        // let density_pressure_t = measure_time(||{self.compute_density_pressure()});
-        // let force_t = measure_time(|| {self.compute_force()});
-        // let boundary_t = measure_time(||{self.handle_boundary()});
-        // log(&format!("{},{},{},{}", register_t, density_pressure_t, force_t, boundary_t));
+        // let register_time = benchmark!({self.cells.register_cells(&self.particles)});
+        // let density_pressure_time = benchmark!({self.compute_density_pressure()});
+        // let compute_force_time = benchmark!({self.compute_force()});
+        // let boundary_time = benchmark!({self.handle_boundary()});
+        // let s = format!("{},{},{},{}", register_time, density_pressure_time, compute_force_time, boundary_time);
+        // println!("{}", s);
         self.cells.register_cells(&self.particles);
         self.compute_density_pressure();
         self.compute_force();
@@ -119,16 +130,14 @@ impl State {
             let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
             let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
 
-            for gx in grid_x - 1 ..= grid_x + 1 {
-                for gy in grid_y - 1 ..= grid_y + 1 {
-                    if 0 <= gx && gx < self.cells.nx as i32 && 0 <= gy && gy < self.cells.ny as i32 {
-                        let grid_id = gy as usize * self.cells.nx + gx as usize;
-                        for j in &self.cells.cells[grid_id] {
-                            let pj = &self.particles[*j as usize];
-                            let r = (pj.position - pi.position).length();
-                            if r < KERNEL_RADIUS {
-                                *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
-                            }
+            for gx in std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, self.cells.nx as i32 - 1) {
+                for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
+                    let grid_id = gy as usize * self.cells.nx + gx as usize;
+                    for j in &self.cells.cells[grid_id] {
+                        let pj = &self.particles[*j as usize];
+                        let r = (pj.position - pi.position).length();
+                        if r < KERNEL_RADIUS {
+                            *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
                         }
                     }
                 }
@@ -152,31 +161,24 @@ impl State {
             let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
             let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
 
-            for gx in grid_x - 1 ..= grid_x + 1 {
-                for gy in grid_y - 1 ..= grid_y + 1 {
-                    if 0 <= gx && gx < self.cells.nx as i32 && 0 <= gy && gy < self.cells.ny as i32 {
-                        let grid_id = gy as usize * self.cells.nx + gx as usize;
-                        for j in &self.cells.cells[grid_id] {
-                            if i == *j as usize {
-                                continue;
-                            }
-                            let pj = &self.particles[*j as usize];
-                            let mut rij = pj.position - pi.position;
-                            let mut r = rij.length();
-            
-                            // This negatively affects performance when the fluid is static.
-                            if r < EPS {
-                                continue;
-                            }
-            
-                            if r < KERNEL_RADIUS {
-                                let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                                let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * (KERNEL_RADIUS - r).powf(3.0) / pj.density;
-                                fpress += press_coeff * rij.normalize();
-                                let visc_coeff = VISCOSITY * MASS * VISC_LAP * (KERNEL_RADIUS - r) / pj.density;
-                                let relative_speed = pj.velocity - pi.velocity;
-                                fvisc += visc_coeff * relative_speed;
-                            }
+            for gx in std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, self.cells.nx as i32 - 1) {
+                for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
+                    let grid_id = gy as usize * self.cells.nx + gx as usize;
+                    for j in &self.cells.cells[grid_id] {
+                        if i == *j as usize {
+                            continue;
+                        }
+                        let pj = &self.particles[*j as usize];
+                        let rij = pj.position - pi.position;
+                        let r = rij.length();
+        
+                        if EPS < r && r < KERNEL_RADIUS {
+                            let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
+                            let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * (KERNEL_RADIUS - r).powf(3.0) / pj.density;
+                            fpress += press_coeff * rij.normalize();
+                            let visc_coeff = VISCOSITY * MASS * VISC_LAP * (KERNEL_RADIUS - r) / pj.density;
+                            let relative_speed = pj.velocity - pi.velocity;
+                            fvisc += visc_coeff * relative_speed;
                         }
                     }
                 }
@@ -267,14 +269,4 @@ impl Cells {
         }
         v
     }
-}
-
-fn measure_time<F, R>(func: F) -> u128
-where
-    F: FnOnce() -> R,
-{
-    let start = Instant::now(); 
-    func();                     
-    let duration = start.elapsed(); 
-    duration.as_millis()
 }

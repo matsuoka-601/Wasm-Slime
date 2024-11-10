@@ -91,12 +91,10 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
-        for i in 0..10 {
+        for _ in 0..10 {
             self.state.step();
         }
-        let check_sum : f32 = self.state.particles.iter().map(|p|p.position.y).sum();
     }
-
 }
 
 pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32> {
