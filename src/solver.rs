@@ -12,6 +12,7 @@ pub struct State {
     pub num_particles: u32, 
     pub particles: Vec<Particle>, 
     pub field: Field, 
+    pub cells: Cells
 }
 
 pub struct Particle {
@@ -28,6 +29,11 @@ pub struct Field {
     pub width: f32,
 }
 
+pub struct Cells {
+    pub cells: Vec<Vec<u32>>, 
+    pub nx: usize, 
+    pub ny: usize, 
+}
 
 const DT: f32 = 0.001;
 const PARTICLE_SIZE: f32 = 0.0085;
@@ -58,13 +64,18 @@ impl State {
     pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
         let particles = Self::init_particles(num_particles, scale);
         let field = Field { height, width };
-        Self { num_particles, particles, field }
+        let cells = Cells::new(height, width, KERNEL_RADIUS);
+        Self { num_particles, particles, field, cells }
     }
 
     pub fn step(&mut self) {
+        self.cells.register_cells(&self.particles);
         self.compute_density_pressure();
         self.compute_force();
+        self.handle_boundary();
+    }
 
+    fn handle_boundary(&mut self) {
         let field_height = self.field.height;
         let field_width = self.field.width;
 
@@ -96,7 +107,9 @@ impl State {
 
         densities.par_iter_mut().enumerate().for_each(|(i, density)| {
             let pi = &self.particles[i];
-            for pj in &self.particles {
+            for j in self.cells.neighbors(pi, KERNEL_RADIUS) {
+            // for j in 0..self.num_particles {
+                let pj = &self.particles[j as usize];
                 let r = (pj.position - pi.position).length();
                 if r < KERNEL_RADIUS {
                     *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
@@ -117,10 +130,12 @@ impl State {
             let mut fpress = Vec2::new(0.0, 0.0);
             let mut fvisc = Vec2::new(0.0, 0.0);
             let pi = &self.particles[i];
-            for (j, pj) in self.particles.iter().enumerate() {
-                if i == j {
+            for j in self.cells.neighbors(pi, KERNEL_RADIUS) {
+            // for j in 0..self.num_particles {
+                if i == j as usize {
                     continue;
                 }
+                let pj = &self.particles[j as usize];
                 let mut rij = pj.position - pi.position;
                 let mut r = rij.length();
 
@@ -179,5 +194,47 @@ impl State {
         }
 
         particles
+    }
+}
+
+impl Cells {
+    pub fn new(height: f32, width: f32, radius: f32) -> Self {
+        let ny = (height / radius).ceil() as usize;
+        let nx = (width / radius).ceil() as usize;
+        let cells = vec![Vec::new(); nx * ny];
+        Cells { cells, nx, ny }
+    }
+
+    fn cell_position_to_id(&self, ix: usize, iy: usize) -> usize {
+        self.nx * iy + ix
+    }
+
+    pub fn register_cells(&mut self, particles: &Vec<Particle>) {
+        self.cells.iter_mut().for_each(|v| v.clear());
+        particles.iter().enumerate().for_each(|(i, particle)|{
+            let ix = (particle.position.x / KERNEL_RADIUS) as usize;
+            let iy = (particle.position.y / KERNEL_RADIUS) as usize;
+            let cell_id = self.cell_position_to_id(ix, iy);
+            self.cells[cell_id].push(i as u32);
+        });
+    }
+
+    pub fn neighbors(&self, particle: &Particle, radius: f32) -> Vec<u32> {
+        let ix = (particle.position.x / radius) as i32;
+        let iy = (particle.position.y / radius) as i32;
+        let dx_ = [-1, 0, 1];
+        let dy_ = [-1, 0, 1];
+
+        let mut v = Vec::new();
+        for dx in dx_ {
+            for dy in dy_ {
+                let jx = ix + dx;
+                let jy  = iy + dy;
+                if 0 <= jx && jx < self.nx as i32 && 0 <= jy && jy < self.ny as i32 {
+                    v.extend_from_slice(&self.cells[self.cell_position_to_id(jx as usize, jy as usize)]);
+                }
+            }
+        }
+        v
     }
 }

@@ -46,9 +46,9 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const FIELD_HEIGHT: f32 = 2.0;
-const FIELD_WIDTH: f32 = 2.0;
-const VIEW_HEIGHT: u32 = 600;
+const FIELD_HEIGHT: f32 = 1.5;
+const FIELD_WIDTH: f32 = 1.5;
+const VIEW_HEIGHT: u32 = 900;
 const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
 const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
 
