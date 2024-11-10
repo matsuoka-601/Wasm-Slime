@@ -46,7 +46,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 6000;
+const NUM_PARTICLES: u32 = 8000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;

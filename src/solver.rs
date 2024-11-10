@@ -4,6 +4,7 @@ use glam::Vec2;
 // use rand::Rng;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, Rng};
+use std::time::{Instant, Duration};
 
 use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -51,7 +52,7 @@ const POLY6: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8);
 const SPIKY_GRAD: f32 = -10.0 / (PI * KERNEL_RADIUS_POW5); 
 const VISC_LAP: f32 = 40.0 / (PI * KERNEL_RADIUS_POW5); 
 const VISCOSITY: f32 = 0.0002;
-const EPS: f32 = 1e-15;
+const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
 #[wasm_bindgen]
@@ -71,6 +72,11 @@ impl State {
     }
 
     pub fn step(&mut self) {
+        // let register_t = measure_time(|| {self.cells.register_cells(&self.particles)});
+        // let density_pressure_t = measure_time(||{self.compute_density_pressure()});
+        // let force_t = measure_time(|| {self.compute_force()});
+        // let boundary_t = measure_time(||{self.handle_boundary()});
+        // log(&format!("{},{},{},{}", register_t, density_pressure_t, force_t, boundary_t));
         self.cells.register_cells(&self.particles);
         self.compute_density_pressure();
         self.compute_force();
@@ -158,9 +164,9 @@ impl State {
                             let mut rij = pj.position - pi.position;
                             let mut r = rij.length();
             
+                            // This negatively affects performance when the fluid is static.
                             if r < EPS {
-                                rij = Vec2::new(EPS, EPS); // TODO : fix
-                                r = rij.length();
+                                continue;
                             }
             
                             if r < KERNEL_RADIUS {
@@ -192,7 +198,7 @@ impl State {
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
-        let mut y = 10.0 * PARTICLE_SIZE;
+        let mut y = 1.2 * PARTICLE_SIZE;
         loop {
             let mut x = field.width * 0.1;
             loop {
@@ -261,4 +267,14 @@ impl Cells {
         }
         v
     }
+}
+
+fn measure_time<F, R>(func: F) -> u128
+where
+    F: FnOnce() -> R,
+{
+    let start = Instant::now(); 
+    func();                     
+    let duration = start.elapsed(); 
+    duration.as_millis()
 }
