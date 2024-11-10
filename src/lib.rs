@@ -46,6 +46,12 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
+const FIELD_HEIGHT: f32 = 2.0;
+const FIELD_WIDTH: f32 = 2.0;
+const VIEW_HEIGHT: u32 = 600;
+const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
+const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
+
 #[wasm_bindgen]
 impl Simulation {
     #[wasm_bindgen(constructor)]
@@ -53,7 +59,7 @@ impl Simulation {
         canvas: &web_sys::OffscreenCanvas
     ) -> Result<Simulation, JsValue> {
         let (gl, buffers) = init_webgl(canvas)?;
-        let state = solver::State::new(4000);
+        let state = solver::State::new(4000, FIELD_HEIGHT, FIELD_WIDTH, SCALE);
         Ok(Simulation{ gl, buffers, state })
     }
 
@@ -61,7 +67,8 @@ impl Simulation {
         self.gl.clear_color(0.4, 0.4, 0.4, 1.0);
         self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 
-        let positions = generate_positions(&self.state.particles, 900.0);
+        let scale = VIEW_HEIGHT as f32 / FIELD_HEIGHT as f32;
+        let positions = generate_positions(&self.state.particles, scale);
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.position_buffer));
         unsafe {
             self.gl.buffer_data_with_array_buffer_view(
@@ -83,7 +90,7 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
-        for i in 0..5 {
+        for i in 0..10 {
             self.state.step();
         }
     }
@@ -127,8 +134,8 @@ fn init_webgl(
     canvas: &web_sys::OffscreenCanvas
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     // set up canvas and webgl context handle
-    canvas.set_width(900);
-    canvas.set_height(900);
+    canvas.set_width(VIEW_HEIGHT);
+    canvas.set_height(VIEW_WIDTH);
 
     let gl = canvas
         .get_context("webgl2")?

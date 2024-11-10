@@ -10,7 +10,8 @@ use std::f32::consts::PI;
 
 pub struct State {
     pub num_particles: u32, 
-    pub particles: Vec<Particle>
+    pub particles: Vec<Particle>, 
+    pub field: Field, 
 }
 
 pub struct Particle {
@@ -21,6 +22,12 @@ pub struct Particle {
     pub density: f32, 
     pub size: f32
 }
+
+pub struct Field {
+    pub height: f32, 
+    pub width: f32,
+}
+
 
 const DT: f32 = 0.001;
 const PARTICLE_SIZE: f32 = 0.0085;
@@ -35,8 +42,8 @@ const MASS: f32 = 2.5 / 600.0 / 600.0;
 const POLY6: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8); 
 const SPIKY_GRAD: f32 = -10.0 / (PI * KERNEL_RADIUS_POW5); 
 const VISC_LAP: f32 = 40.0 / (PI * KERNEL_RADIUS_POW5); 
-const VISCOSITY: f32 = 0.0001;
-const EPS: f32 = 1e-9;
+const VISCOSITY: f32 = 0.0002;
+const EPS: f32 = 1e-15;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
 #[wasm_bindgen]
@@ -48,14 +55,18 @@ extern "C" {
 }
 
 impl State {
-    pub fn new(num_particles: u32) -> Self {
-        let particles = Self::init_particles(num_particles);
-        Self { num_particles, particles }
+    pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
+        let particles = Self::init_particles(num_particles, scale);
+        let field = Field { height, width };
+        Self { num_particles, particles, field }
     }
 
     pub fn step(&mut self) {
         self.compute_density_pressure();
         self.compute_force();
+
+        let field_height = self.field.height;
+        let field_width = self.field.width;
 
         self.particles.par_iter_mut().for_each(|particle|{
             particle.velocity += particle.force * (DT / particle.density);
@@ -65,16 +76,16 @@ impl State {
                 particle.position.y = KERNEL_RADIUS;
                 particle.velocity.y = -0.5;
             }
-            if particle.position.y + 2.0 * KERNEL_RADIUS > 1.0 { // TODO : fix
-                particle.position.y = 1.0 - 2.0 * KERNEL_RADIUS;
+            if particle.position.y + 2.0 * KERNEL_RADIUS > field_height { 
+                particle.position.y = field_height - 2.0 * KERNEL_RADIUS;
                 particle.velocity.y = -0.5;
             }
             if particle.position.x - KERNEL_RADIUS < 0.0 {
                 particle.position.x = KERNEL_RADIUS;
                 particle.velocity.x *= -0.5;
             }
-            if particle.position.x + 2.0 * KERNEL_RADIUS > 1.0 {
-                particle.position.x = 1.0 - 2.0 * KERNEL_RADIUS;
+            if particle.position.x + 2.0 * KERNEL_RADIUS > field_width {
+                particle.position.x = field_width - 2.0 * KERNEL_RADIUS;
                 particle.velocity.x *= -0.5;
             }
         });
@@ -113,10 +124,10 @@ impl State {
                 let mut rij = pj.position - pi.position;
                 let mut r = rij.length();
 
-                // if r < EPS {
-                //     rij = Vec2::new(EPS, EPS); // TODO : fix
-                //     r = rij.length();
-                // }
+                if r < EPS {
+                    rij = Vec2::new(EPS, EPS); // TODO : fix
+                    r = rij.length();
+                }
 
                 if r < KERNEL_RADIUS {
                     // log(&r.to_string());
@@ -137,20 +148,10 @@ impl State {
         });
     }
 
-    fn init_particles(num_particles: u32) -> Vec<Particle> {
+    fn init_particles(num_particles: u32, scale: f32) -> Vec<Particle> {
         let mut particles = Vec::new();
         particles.reserve(num_particles as usize);
         let mut rng = rand::thread_rng();
-
-        // for _ in 0..num_particles {
-        //     let position = Vec2::new(rng.gen(), rng.gen());
-        //     let velocity = Vec2::new(0.0, 0.0);
-        //     let force = Vec2::new(0.0, 0.0);
-        //     let pressure = 0.0;
-        //     let density = 0.0;
-        //     let size = 8.0;
-        //     particles.push(Particle{ position, velocity, force, pressure, density, size });
-        // }
 
         let mut y = 10.0 * PARTICLE_SIZE;
         loop {
@@ -161,7 +162,7 @@ impl State {
                 let force = Vec2::new(0.0, 0.0);
                 let pressure = 0.0;
                 let density = 0.0;
-                let size = 8.0;
+                let size = PARTICLE_SIZE * scale;
                 particles.push(Particle{ position, velocity, force, pressure, density, size });
                 x += 1.5 * PARTICLE_SIZE + 0.001 * rng.gen::<f32>();
                 if x > 7.0 / 8.0 {
