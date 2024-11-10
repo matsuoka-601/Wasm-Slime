@@ -47,3 +47,8 @@ rustc-args = ["-C", "target-feature=+atomics,+bulk-memory"]
 [profile.release]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
+
+# As of wasm-opt version 110, -O3 empirically leads to
+# poorer performance
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os"]

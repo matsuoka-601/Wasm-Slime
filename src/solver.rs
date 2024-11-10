@@ -1,7 +1,9 @@
 use core::num;
 
 use glam::Vec2;
-use rand::Rng;
+// use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{SeedableRng, Rng};
 
 use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -57,13 +59,13 @@ extern "C" {
     fn alert(s: &str);
 
     #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
+    pub fn log(s: &str);
 }
 
 impl State {
     pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
-        let particles = Self::init_particles(num_particles, scale);
         let field = Field { height, width };
+        let particles = Self::init_particles(num_particles, scale, &field);
         let cells = Cells::new(height, width, KERNEL_RADIUS);
         Self { num_particles, particles, field, cells }
     }
@@ -107,12 +109,22 @@ impl State {
 
         densities.par_iter_mut().enumerate().for_each(|(i, density)| {
             let pi = &self.particles[i];
-            for j in self.cells.neighbors(pi, KERNEL_RADIUS) {
-            // for j in 0..self.num_particles {
-                let pj = &self.particles[j as usize];
-                let r = (pj.position - pi.position).length();
-                if r < KERNEL_RADIUS {
-                    *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
+
+            let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
+            let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
+
+            for gx in grid_x - 1 ..= grid_x + 1 {
+                for gy in grid_y - 1 ..= grid_y + 1 {
+                    if 0 <= gx && gx < self.cells.nx as i32 && 0 <= gy && gy < self.cells.ny as i32 {
+                        let grid_id = gy as usize * self.cells.nx + gx as usize;
+                        for j in &self.cells.cells[grid_id] {
+                            let pj = &self.particles[*j as usize];
+                            let r = (pj.position - pi.position).length();
+                            if r < KERNEL_RADIUS {
+                                *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -130,30 +142,40 @@ impl State {
             let mut fpress = Vec2::new(0.0, 0.0);
             let mut fvisc = Vec2::new(0.0, 0.0);
             let pi = &self.particles[i];
-            for j in self.cells.neighbors(pi, KERNEL_RADIUS) {
-            // for j in 0..self.num_particles {
-                if i == j as usize {
-                    continue;
-                }
-                let pj = &self.particles[j as usize];
-                let mut rij = pj.position - pi.position;
-                let mut r = rij.length();
 
-                if r < EPS {
-                    rij = Vec2::new(EPS, EPS); // TODO : fix
-                    r = rij.length();
-                }
+            let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
+            let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
 
-                if r < KERNEL_RADIUS {
-                    // log(&r.to_string());
-                    let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                    let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * (KERNEL_RADIUS - r).powf(3.0) / pj.density;
-                    fpress += press_coeff * rij.normalize();
-                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * (KERNEL_RADIUS - r) / pj.density;
-                    let relative_speed = pj.velocity - pi.velocity;
-                    fvisc += visc_coeff * relative_speed;
+            for gx in grid_x - 1 ..= grid_x + 1 {
+                for gy in grid_y - 1 ..= grid_y + 1 {
+                    if 0 <= gx && gx < self.cells.nx as i32 && 0 <= gy && gy < self.cells.ny as i32 {
+                        let grid_id = gy as usize * self.cells.nx + gx as usize;
+                        for j in &self.cells.cells[grid_id] {
+                            if i == *j as usize {
+                                continue;
+                            }
+                            let pj = &self.particles[*j as usize];
+                            let mut rij = pj.position - pi.position;
+                            let mut r = rij.length();
+            
+                            if r < EPS {
+                                rij = Vec2::new(EPS, EPS); // TODO : fix
+                                r = rij.length();
+                            }
+            
+                            if r < KERNEL_RADIUS {
+                                let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
+                                let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * (KERNEL_RADIUS - r).powf(3.0) / pj.density;
+                                fpress += press_coeff * rij.normalize();
+                                let visc_coeff = VISCOSITY * MASS * VISC_LAP * (KERNEL_RADIUS - r) / pj.density;
+                                let relative_speed = pj.velocity - pi.velocity;
+                                fvisc += visc_coeff * relative_speed;
+                            }
+                        }
+                    }
                 }
             }
+            
             let fgrv = pi.density * GRV;
             *force = fpress + fvisc + fgrv;
         });
@@ -163,14 +185,16 @@ impl State {
         });
     }
 
-    fn init_particles(num_particles: u32, scale: f32) -> Vec<Particle> {
+    fn init_particles(num_particles: u32, scale: f32, field: &Field) -> Vec<Particle> {
         let mut particles = Vec::new();
         particles.reserve(num_particles as usize);
-        let mut rng = rand::thread_rng();
+
+        let seed = 12345; 
+        let mut rng = StdRng::seed_from_u64(seed);
 
         let mut y = 10.0 * PARTICLE_SIZE;
         loop {
-            let mut x = 1.0 / 8.0;
+            let mut x = field.width * 0.1;
             loop {
                 let position = Vec2::new(x, y);
                 let velocity = Vec2::new(0.0, 0.0);
@@ -179,8 +203,8 @@ impl State {
                 let density = 0.0;
                 let size = PARTICLE_SIZE * scale;
                 particles.push(Particle{ position, velocity, force, pressure, density, size });
-                x += 1.5 * PARTICLE_SIZE + 0.001 * rng.gen::<f32>();
-                if x > 7.0 / 8.0 {
+                x += 1.5 * PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
+                if x > field.width * 0.9 {
                     break;
                 }
                 if particles.len() == num_particles as usize {

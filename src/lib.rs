@@ -46,6 +46,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
+const NUM_PARTICLES: u32 = 6000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
@@ -59,7 +60,7 @@ impl Simulation {
         canvas: &web_sys::OffscreenCanvas
     ) -> Result<Simulation, JsValue> {
         let (gl, buffers) = init_webgl(canvas)?;
-        let state = solver::State::new(4000, FIELD_HEIGHT, FIELD_WIDTH, SCALE);
+        let state = solver::State::new(NUM_PARTICLES, FIELD_HEIGHT, FIELD_WIDTH, SCALE);
         Ok(Simulation{ gl, buffers, state })
     }
 
@@ -93,6 +94,7 @@ impl Simulation {
         for i in 0..10 {
             self.state.step();
         }
+        let check_sum : f32 = self.state.particles.iter().map(|p|p.position.y).sum();
     }
 
 }
