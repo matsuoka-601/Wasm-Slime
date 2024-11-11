@@ -42,15 +42,15 @@ pub struct Cells {
 }
 
 const DT: f32 = 0.001;
-const PARTICLE_SIZE: f32 = 0.0085;
-const KERNEL_RADIUS: f32 = 1.2 * PARTICLE_SIZE;
+const PARTICLE_SIZE: f32 = 0.005;
+const KERNEL_RADIUS: f32 = 1.5 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 300.0;
-const STIFFNESS: f32 = 3.0;
-const MASS: f32 = 2.5 / 600.0 / 600.0;
+const TARGET_DENSITY: f32 = 500.0;
+const STIFFNESS: f32 = 2.0;
+const MASS: f32 = 2.5 / 600.0 / 800.0;
 const POLY6: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8); 
 const SPIKY_GRAD: f32 = -10.0 / (PI * KERNEL_RADIUS_POW5); 
 const VISC_LAP: f32 = 40.0 / (PI * KERNEL_RADIUS_POW5); 
@@ -147,7 +147,8 @@ impl State {
                         let pj = &particles_copy[*j as usize];
                         let r = (pj.position - pi.position).length();
                         if r < KERNEL_RADIUS {
-                            particle.density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
+                            let a = KERNEL_RADIUS_SQ - r*r;
+                            particle.density += MASS * POLY6 * a * a * a;
                         }
                     }
                 }
@@ -183,10 +184,11 @@ impl State {
                         let r = rij.length();
         
                         if EPS < r && r < KERNEL_RADIUS {
+                            let a = KERNEL_RADIUS - r;
                             let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                            let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * (KERNEL_RADIUS - r).powf(3.0) / pj.density;
+                            let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a * a * a / pj.density;
                             fpress += press_coeff * rij.normalize();
-                            let visc_coeff = VISCOSITY * MASS * VISC_LAP * (KERNEL_RADIUS - r) / pj.density;
+                            let visc_coeff = VISCOSITY * MASS * VISC_LAP * a / pj.density;
                             let relative_speed = pj.velocity - pi.velocity;
                             fvisc += visc_coeff * relative_speed;
                         }
@@ -210,7 +212,7 @@ impl State {
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
-        let mut y = 1.2 * PARTICLE_SIZE;
+        let mut y = 2.0 * KERNEL_RADIUS;
         loop {
             let mut x = field.width * 0.1;
             loop {
@@ -221,7 +223,7 @@ impl State {
                 let density = 0.0;
                 let size = PARTICLE_SIZE * scale;
                 particles.push(Particle{ position, velocity, force, pressure, density, size });
-                x += 1.5 * PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
+                x += 1.3 * PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
                 if x > field.width * 0.9 {
                     break;
                 }
@@ -232,7 +234,7 @@ impl State {
             if particles.len() == num_particles as usize {
                 break;
             }
-            y += 1.5 * PARTICLE_SIZE;
+            y += KERNEL_RADIUS;
         }
 
         particles

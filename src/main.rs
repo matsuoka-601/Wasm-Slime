@@ -4,9 +4,9 @@ use solver::State;
 use std::time::{Instant, Duration};
 
 fn main() {
-    let mut state = State::new(20, 1.5, 1.5, 900.0);
+    let mut state = State::new(8000, 1.5, 1.5, 900.0);
 
-    rayon::ThreadPoolBuilder::new().num_threads(16).build_global().unwrap();
+    rayon::ThreadPoolBuilder::new().num_threads(1).build_global().unwrap();
 
     let mut cnt = 0;
     loop {
