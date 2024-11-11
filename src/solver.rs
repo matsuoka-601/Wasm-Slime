@@ -5,6 +5,7 @@ use glam::Vec2;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, Rng};
 use std::time::{Instant, Duration};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -15,7 +16,8 @@ pub struct State {
     pub num_particles: u32, 
     pub particles: Vec<Particle>, 
     pub field: Field, 
-    pub cells: Cells
+    pub cells: Cells, 
+    pub counter: AtomicU32
 }
 
 pub struct Particle {
@@ -78,7 +80,8 @@ impl State {
         let field = Field { height, width };
         let particles = Self::init_particles(num_particles, scale, &field);
         let cells = Cells::new(height, width, KERNEL_RADIUS);
-        Self { num_particles, particles, field, cells }
+        let counter = AtomicU32::new(0);
+        Self { num_particles, particles, field, cells, counter }
     }
 
     pub fn step(&mut self) {
@@ -124,6 +127,8 @@ impl State {
     fn compute_density_pressure(&mut self) {
         let mut densities = vec![0.0 as f32; self.num_particles as usize];
 
+        let counter = &self.counter;
+
         densities.par_iter_mut().enumerate().for_each(|(i, density)| {
             let pi = &self.particles[i];
 
@@ -134,6 +139,7 @@ impl State {
                 for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
                     let grid_id = gy as usize * self.cells.nx + gx as usize;
                     for j in &self.cells.cells[grid_id] {
+                        counter.fetch_add(1, Ordering::SeqCst);
                         let pj = &self.particles[*j as usize];
                         let r = (pj.position - pi.position).length();
                         if r < KERNEL_RADIUS {
@@ -153,6 +159,8 @@ impl State {
     fn compute_force(&mut self) {
         let mut forces = vec![Vec2::new(0.0, 0.0); self.num_particles as usize];
 
+        let counter = &self.counter;
+
         forces.par_iter_mut().enumerate().for_each(|(i, force)|{
             let mut fpress = Vec2::new(0.0, 0.0);
             let mut fvisc = Vec2::new(0.0, 0.0);
@@ -165,6 +173,7 @@ impl State {
                 for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
                     let grid_id = gy as usize * self.cells.nx + gx as usize;
                     for j in &self.cells.cells[grid_id] {
+                        counter.fetch_add(1, Ordering::SeqCst);
                         if i == *j as usize {
                             continue;
                         }

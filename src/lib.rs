@@ -10,6 +10,9 @@ use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, WebGlBuffer};
 #[wasm_bindgen]
 extern "C" {
     fn alert(s: &str);
+
+    #[wasm_bindgen(js_namespace = console)]
+    pub fn log(s: &str);
 }
 
 static VERTEX_SHADER: &'static str = r#"
@@ -91,9 +94,12 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
+        self.state.counter.store(0, std::sync::atomic::Ordering::SeqCst);
         for _ in 0..10 {
             self.state.step();
         }
+        let s = format!("{:?}", self.state.counter);
+        log(&s);
     }
 }
 
