@@ -20,6 +20,7 @@ pub struct State {
     pub counter: AtomicU32
 }
 
+#[derive(Clone)]
 pub struct Particle {
     pub position: Vec2, 
     pub velocity: Vec2, 
@@ -87,7 +88,7 @@ impl State {
         let t2 = benchmark!({self.compute_density_pressure()});
         let t3 = benchmark!({self.compute_force()});
         let t4 = benchmark!({self.handle_boundary()});
-        let s = format!("{},{},{},{}", t1, t2, t3, t4);
+        let s = format!("{}us, {}us, {}us, {}us", t1, t2, t3, t4);
         log(&s);
         // println!("{}", s);
         // self.cells.register_cells(&self.particles);
@@ -124,34 +125,35 @@ impl State {
     }
 
     fn compute_density_pressure(&mut self) {
-        let mut densities = vec![0.0 as f32; self.num_particles as usize];
-
+        let particles_copy = self.particles.clone();
+        let cells = &self.cells;
         let counter = &self.counter;
 
-        densities.par_iter_mut().enumerate().for_each(|(i, density)| {
-            let pi = &self.particles[i];
+        self.particles.par_iter_mut().enumerate().for_each(|(i, particle)| {
+            let pi = &particles_copy[i];
+            particle.density = 0.0;
 
             let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
             let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
 
-            for gx in std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, self.cells.nx as i32 - 1) {
-                for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
-                    let grid_id = gy as usize * self.cells.nx + gx as usize;
-                    for j in &self.cells.cells[grid_id] {
-                        counter.fetch_add(1, Ordering::SeqCst);
-                        let pj = &self.particles[*j as usize];
+            let xrange = std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, cells.nx as i32 - 1);
+
+            for gx in xrange {
+                let yrange = std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, cells.ny as i32 - 1);
+                for gy in yrange {
+                    let grid_id = gy as usize * cells.nx + gx as usize;
+                    for j in &cells.cells[grid_id] {
+                        // counter.fetch_add(1, Ordering::SeqCst);
+                        let pj = &particles_copy[*j as usize];
                         let r = (pj.position - pi.position).length();
                         if r < KERNEL_RADIUS {
-                            *density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
+                            particle.density += MASS * POLY6 * (KERNEL_RADIUS_SQ - r*r).powf(3.0);
                         }
                     }
                 }
             }
-        });
 
-        self.particles.par_iter_mut().enumerate().for_each(|(i, particle)| {
-            particle.density = densities[i];
-            particle.pressure = STIFFNESS * (densities[i] - TARGET_DENSITY);
+            particle.pressure = STIFFNESS * (particle.density - TARGET_DENSITY);
         });
     }
 
@@ -172,7 +174,7 @@ impl State {
                 for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
                     let grid_id = gy as usize * self.cells.nx + gx as usize;
                     for j in &self.cells.cells[grid_id] {
-                        counter.fetch_add(1, Ordering::SeqCst);
+                        // counter.fetch_add(1, Ordering::SeqCst);
                         if i == *j as usize {
                             continue;
                         }
