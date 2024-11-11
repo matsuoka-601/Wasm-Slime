@@ -4,7 +4,7 @@ use glam::Vec2;
 // use rand::Rng;
 use rand::rngs::StdRng;
 use rand::{SeedableRng, Rng};
-use std::time::{Instant, Duration};
+use web_time::Instant;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use rayon::prelude::*;
@@ -67,8 +67,6 @@ extern "C" {
 
 macro_rules! benchmark {
     ($code:block) => {{
-        use std::time::Instant;
-        
         let start = Instant::now(); 
         $code
         start.elapsed().as_micros()
@@ -85,16 +83,17 @@ impl State {
     }
 
     pub fn step(&mut self) {
-        // let register_time = benchmark!({self.cells.register_cells(&self.particles)});
-        // let density_pressure_time = benchmark!({self.compute_density_pressure()});
-        // let compute_force_time = benchmark!({self.compute_force()});
-        // let boundary_time = benchmark!({self.handle_boundary()});
-        // let s = format!("{},{},{},{}", register_time, density_pressure_time, compute_force_time, boundary_time);
+        let t1 = benchmark!({self.cells.register_cells(&self.particles)});
+        let t2 = benchmark!({self.compute_density_pressure()});
+        let t3 = benchmark!({self.compute_force()});
+        let t4 = benchmark!({self.handle_boundary()});
+        let s = format!("{},{},{},{}", t1, t2, t3, t4);
+        log(&s);
         // println!("{}", s);
-        self.cells.register_cells(&self.particles);
-        self.compute_density_pressure();
-        self.compute_force();
-        self.handle_boundary();
+        // self.cells.register_cells(&self.particles);
+        // self.compute_density_pressure();
+        // self.compute_force();
+        // self.handle_boundary();
     }
 
     fn handle_boundary(&mut self) {
