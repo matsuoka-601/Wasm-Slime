@@ -62,8 +62,8 @@ const STIFFNESS: f32 = 0.01;
 const MASS: f32 = 1.0;
 const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
 const SPIKY_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
-const VISC_LAP: f32 = 45.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_SQ); 
-const VISCOSITY: f32 = 0.00001;
+const VISC_LAP: f32 = 4.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4); 
+const VISCOSITY: f32 = 1.0;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
@@ -197,7 +197,7 @@ impl State {
                     let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
                     let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a / pj.density;
                     fpress += press_coeff * rij.normalize();
-                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * aa / pj.density;
+                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * aa * aa * aa / pj.density;
                     let relative_speed = pj.velocity - pi.velocity;
                     fvisc += visc_coeff * relative_speed;
                 }
