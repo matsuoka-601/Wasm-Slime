@@ -49,7 +49,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 12000;
+const NUM_PARTICLES: u32 = 15000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
@@ -99,7 +99,7 @@ impl Simulation {
             self.state.step();
         }
         let s = format!("{:?}", self.state.counter);
-        log(&s);
+        // log(&s);
     }
 }
 

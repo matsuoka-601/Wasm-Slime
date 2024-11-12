@@ -30,11 +30,13 @@ struct Neighbor{
 #[derive(Clone)]
 pub struct Particle {
     pub position: Vec2, 
-    pub velocity: Vec2, 
-    pub force: Vec2, 
-    pub pressure: f32, 
-    pub density: f32, 
-    pub size: f32
+    velocity: Vec2, 
+    force: Vec2, 
+    pressure: f32, 
+    density: f32, 
+    // near_pressure: f32, 
+    // near_density: f32,
+    pub size: f32, 
 }
 
 pub struct Field {
@@ -50,7 +52,7 @@ pub struct Cells {
 
 const DT: f32 = 0.0007;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 1.8 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
@@ -97,7 +99,7 @@ impl State {
         let t3 = benchmark!({self.compute_force()});
         let t4 = benchmark!({self.handle_boundary()});
         let s = format!("{}us, {}us, {}us, {}us", t1, t2, t3, t4);
-        log(&s);
+        // log(&s);
         // println!("{}", s);
         // self.cells.register_cells(&self.particles);
         // self.compute_density_pressure();
