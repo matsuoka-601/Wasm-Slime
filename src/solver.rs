@@ -15,9 +15,16 @@ use std::f32::consts::PI;
 pub struct State {
     pub num_particles: u32, 
     pub particles: Vec<Particle>, 
-    pub field: Field, 
-    pub cells: Cells, 
+    neighbors: Vec<Vec<Neighbor>>, 
+    field: Field, 
+    cells: Cells, 
     pub counter: AtomicU32
+}
+
+#[derive(Clone)]
+struct Neighbor{
+    r: f32, 
+    j: u32
 }
 
 #[derive(Clone)]
@@ -41,20 +48,20 @@ pub struct Cells {
     pub ny: usize, 
 }
 
-const DT: f32 = 0.0005;
+const DT: f32 = 0.0007;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 1.8 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 500.0;
-const STIFFNESS: f32 = 2.0;
-const MASS: f32 = 3.0e-6;
+const TARGET_DENSITY: f32 = 400.0;
+const STIFFNESS: f32 = 3.0;
+const MASS: f32 = 4.0e-6;
 const POLY6: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8); 
 const SPIKY_GRAD: f32 = -10.0 / (PI * KERNEL_RADIUS_POW5); 
 const VISC_LAP: f32 = 40.0 / (PI * KERNEL_RADIUS_POW5); 
-const VISCOSITY: f32 = 0.0002;
+const VISCOSITY: f32 = 0.0001;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
@@ -77,10 +84,11 @@ macro_rules! benchmark {
 impl State {
     pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
         let field = Field { height, width };
+        let neighbors = vec![Vec::with_capacity(64); num_particles as usize];
         let particles = Self::init_particles(num_particles, scale, &field);
         let cells = Cells::new(height, width, KERNEL_RADIUS);
         let counter = AtomicU32::new(0);
-        Self { num_particles, particles, field, cells, counter }
+        Self { num_particles, particles, neighbors, field, cells, counter }
     }
 
     pub fn step(&mut self) {
@@ -129,80 +137,71 @@ impl State {
         let cells = &self.cells;
         let counter = &self.counter;
 
-        self.particles.par_iter_mut().enumerate().for_each(|(i, particle)| {
-            let pi = &particles_copy[i];
-            particle.density = 0.0;
+        self.particles
+            .par_iter_mut()
+            .zip_eq(self.neighbors.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (particle, neighbors))| {
+                neighbors.clear();
+                let pi = &particles_copy[i];
+                particle.density = 0.0;
 
-            let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
-            let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
+                let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
+                let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
 
-            let xrange = std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, cells.nx as i32 - 1);
+                let xrange = std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, cells.nx as i32 - 1);
 
-            for gx in xrange {
-                let yrange = std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, cells.ny as i32 - 1);
-                for gy in yrange {
-                    let grid_id = gy as usize * cells.nx + gx as usize;
-                    for j in &cells.cells[grid_id] {
-                        // counter.fetch_add(1, Ordering::SeqCst);
-                        let pj = &particles_copy[*j as usize];
-                        let r = (pj.position - pi.position).length();
-                        if r < KERNEL_RADIUS {
-                            let a = KERNEL_RADIUS_SQ - r*r;
-                            particle.density += MASS * POLY6 * a * a * a;
+                for gx in xrange {
+                    let yrange = std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, cells.ny as i32 - 1);
+                    for gy in yrange {
+                        let grid_id = gy as usize * cells.nx + gx as usize;
+                        for j in &cells.cells[grid_id] {
+                            // counter.fetch_add(1, Ordering::SeqCst);
+                            let pj = &particles_copy[*j as usize];
+                            let r = (pj.position - pi.position).length();
+                            if r < KERNEL_RADIUS {
+                                let a = KERNEL_RADIUS_SQ - r * r;
+                                particle.density += MASS * POLY6 * a * a * a;
+                                if neighbors.len() < 64 && EPS < r {
+                                    neighbors.push(Neighbor{j: *j, r});
+                                }
+                            }
                         }
                     }
                 }
-            }
-
-            particle.pressure = STIFFNESS * (particle.density - TARGET_DENSITY);
-        });
+                particle.pressure = STIFFNESS * (particle.density - TARGET_DENSITY);
+            });
     }
 
     fn compute_force(&mut self) {
-        let mut forces = vec![Vec2::new(0.0, 0.0); self.num_particles as usize];
-
+        let particles_copy = self.particles.clone();
         let counter = &self.counter;
 
-        forces.par_iter_mut().enumerate().for_each(|(i, force)|{
-            let mut fpress = Vec2::new(0.0, 0.0);
-            let mut fvisc = Vec2::new(0.0, 0.0);
-            let pi = &self.particles[i];
+        self.particles
+            .par_iter_mut()
+            .zip_eq(self.neighbors.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (particle, neighbors))|{
+                let mut fpress = Vec2::new(0.0, 0.0);
+                let mut fvisc = Vec2::new(0.0, 0.0);
+                let pi = &particles_copy[i];
 
-            let grid_x = (pi.position.x / KERNEL_RADIUS) as i32;
-            let grid_y = (pi.position.y / KERNEL_RADIUS) as i32;
-
-            for gx in std::cmp::max(grid_x - 1, 0) ..= std::cmp::min(grid_x + 1, self.cells.nx as i32 - 1) {
-                for gy in std::cmp::max(grid_y - 1, 0) ..= std::cmp::min(grid_y + 1, self.cells.ny as i32 - 1) {
-                    let grid_id = gy as usize * self.cells.nx + gx as usize;
-                    for j in &self.cells.cells[grid_id] {
-                        // counter.fetch_add(1, Ordering::SeqCst);
-                        if i == *j as usize {
-                            continue;
-                        }
-                        let pj = &self.particles[*j as usize];
-                        let rij = pj.position - pi.position;
-                        let r = rij.length();
-        
-                        if EPS < r && r < KERNEL_RADIUS {
-                            let a = KERNEL_RADIUS - r;
-                            let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                            let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a * a * a / pj.density;
-                            fpress += press_coeff * rij.normalize();
-                            let visc_coeff = VISCOSITY * MASS * VISC_LAP * a / pj.density;
-                            let relative_speed = pj.velocity - pi.velocity;
-                            fvisc += visc_coeff * relative_speed;
-                        }
-                    }
+                for Neighbor{ r, j} in neighbors {
+                    let pj = &particles_copy[*j as usize];
+                    let rij = pj.position - pi.position;
+    
+                    let a = KERNEL_RADIUS - *r;
+                    let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
+                    let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a * a * a / pj.density;
+                    fpress += press_coeff * rij.normalize();
+                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * a / pj.density;
+                    let relative_speed = pj.velocity - pi.velocity;
+                    fvisc += visc_coeff * relative_speed;
                 }
-            }
-            
-            let fgrv = pi.density * GRV;
-            *force = fpress + fvisc + fgrv;
-        });
 
-        self.particles.par_iter_mut().enumerate().for_each(|(i, particle)| {
-            particle.force = forces[i];
-        });
+                let fgrv = pi.density * GRV;
+                particle.force = fpress + fvisc + fgrv;
+            });
     }
 
     fn init_particles(num_particles: u32, scale: f32, field: &Field) -> Vec<Particle> {
