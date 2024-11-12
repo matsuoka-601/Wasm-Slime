@@ -52,18 +52,18 @@ pub struct Cells {
 
 const DT: f32 = 0.0005;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 4.0 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 4.0;
+const TARGET_DENSITY: f32 = 10.0;
 const STIFFNESS: f32 = 0.01;
 const MASS: f32 = 1.0;
 const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
 const SPIKY_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
 const VISC_LAP: f32 = 4.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4); 
-const VISCOSITY: f32 = 1.0;
+const VISCOSITY: f32 = 0.5;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
@@ -117,19 +117,19 @@ impl State {
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
                 particle.position.y = KERNEL_RADIUS;
-                particle.velocity.y = -0.95;
+                particle.velocity.y = -0.3;
             }
             if particle.position.y + 2.0 * KERNEL_RADIUS > field_height { 
                 particle.position.y = field_height - 2.0 * KERNEL_RADIUS;
-                particle.velocity.y = -0.95;
+                particle.velocity.y = -0.3;
             }
             if particle.position.x - KERNEL_RADIUS < 0.0 {
                 particle.position.x = KERNEL_RADIUS;
-                particle.velocity.x *= -0.95;
+                particle.velocity.x *= -0.3;
             }
             if particle.position.x + 2.0 * KERNEL_RADIUS > field_width {
                 particle.position.x = field_width - 2.0 * KERNEL_RADIUS;
-                particle.velocity.x *= -0.95;
+                particle.velocity.x *= -0.3;
             }
         });
     }

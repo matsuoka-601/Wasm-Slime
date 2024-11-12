@@ -49,7 +49,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 15000;
+const NUM_PARTICLES: u32 = 18000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
@@ -107,7 +107,7 @@ pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<
     particles.iter().flat_map(|particle|{
         let x = particle.position.x * scale;
         let y = particle.position.y * scale;
-        let size = particle.size;
+        let size = particle.size * 1.2;
         vec![
             x, y, 
             x + size, y, 
