@@ -50,7 +50,7 @@ pub struct Cells {
     pub ny: usize, 
 }
 
-const DT: f32 = 0.0005;
+const DT: f32 = 0.001;
 const PARTICLE_SIZE: f32 = 0.005;
 const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
