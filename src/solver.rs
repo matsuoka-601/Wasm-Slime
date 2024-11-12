@@ -50,20 +50,20 @@ pub struct Cells {
     pub ny: usize, 
 }
 
-const DT: f32 = 0.0007;
+const DT: f32 = 0.0005;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 1.8 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 4.0 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 400.0;
-const STIFFNESS: f32 = 3.0;
-const MASS: f32 = 4.0e-6;
-const POLY6: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8); 
-const SPIKY_GRAD: f32 = -10.0 / (PI * KERNEL_RADIUS_POW5); 
-const VISC_LAP: f32 = 40.0 / (PI * KERNEL_RADIUS_POW5); 
-const VISCOSITY: f32 = 0.0001;
+const TARGET_DENSITY: f32 = 4.0;
+const STIFFNESS: f32 = 0.01;
+const MASS: f32 = 1.0;
+const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
+const SPIKY_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
+const VISC_LAP: f32 = 45.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_SQ); 
+const VISCOSITY: f32 = 0.00001;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 
@@ -117,19 +117,19 @@ impl State {
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
                 particle.position.y = KERNEL_RADIUS;
-                particle.velocity.y = -0.5;
+                particle.velocity.y = -0.95;
             }
             if particle.position.y + 2.0 * KERNEL_RADIUS > field_height { 
                 particle.position.y = field_height - 2.0 * KERNEL_RADIUS;
-                particle.velocity.y = -0.5;
+                particle.velocity.y = -0.95;
             }
             if particle.position.x - KERNEL_RADIUS < 0.0 {
                 particle.position.x = KERNEL_RADIUS;
-                particle.velocity.x *= -0.5;
+                particle.velocity.x *= -0.95;
             }
             if particle.position.x + 2.0 * KERNEL_RADIUS > field_width {
                 particle.position.x = field_width - 2.0 * KERNEL_RADIUS;
-                particle.velocity.x *= -0.5;
+                particle.velocity.x *= -0.95;
             }
         });
     }
@@ -163,8 +163,8 @@ impl State {
                             let r = (pj.position - pi.position).length();
                             if r < KERNEL_RADIUS {
                                 let a = KERNEL_RADIUS_SQ - r * r;
-                                particle.density += MASS * POLY6 * a * a * a;
-                                if neighbors.len() < 64 && EPS < r {
+                                particle.density += MASS * POLY6 * a * a;
+                                if EPS < r {
                                     neighbors.push(Neighbor{j: *j, r});
                                 }
                             }
@@ -193,10 +193,11 @@ impl State {
                     let rij = pj.position - pi.position;
     
                     let a = KERNEL_RADIUS - *r;
+                    let aa = KERNEL_RADIUS_SQ - *r * *r;
                     let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                    let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a * a * a / pj.density;
+                    let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a / pj.density;
                     fpress += press_coeff * rij.normalize();
-                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * a / pj.density;
+                    let visc_coeff = VISCOSITY * MASS * VISC_LAP * aa / pj.density;
                     let relative_speed = pj.velocity - pi.velocity;
                     fvisc += visc_coeff * relative_speed;
                 }
@@ -204,6 +205,8 @@ impl State {
                 let fgrv = pi.density * GRV;
                 particle.force = fpress + fvisc + fgrv;
             });
+        
+        log(&self.particles[0].density.to_string());
     }
 
     fn init_particles(num_particles: u32, scale: f32, field: &Field) -> Vec<Particle> {
@@ -235,7 +238,7 @@ impl State {
             if particles.len() == num_particles as usize {
                 break;
             }
-            y += KERNEL_RADIUS;
+            y += PARTICLE_SIZE;
         }
 
         particles

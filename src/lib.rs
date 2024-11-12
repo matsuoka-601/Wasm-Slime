@@ -49,7 +49,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 15000;
+const NUM_PARTICLES: u32 = 8000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
@@ -140,8 +140,8 @@ fn init_webgl(
     canvas: &web_sys::OffscreenCanvas
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     // set up canvas and webgl context handle
-    canvas.set_width(VIEW_HEIGHT);
-    canvas.set_height(VIEW_WIDTH);
+    canvas.set_height(VIEW_HEIGHT);
+    canvas.set_width(VIEW_WIDTH);
 
     let gl = canvas
         .get_context("webgl2")?
