@@ -52,7 +52,7 @@ pub struct Cells {
 
 const DT: f32 = 0.001;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 2.5 * PARTICLE_SIZE;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
@@ -214,7 +214,7 @@ impl State {
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
-        let mut y = 20.0 * KERNEL_RADIUS;
+        let mut y = 2.0 * KERNEL_RADIUS;
         loop {
             let mut x = field.width * 0.1;
             loop {

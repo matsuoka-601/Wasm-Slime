@@ -32,6 +32,11 @@ web-sys = { version = "0.3", features = [
   'WebGlUniformLocation',
   'WebGlProgram',
   'WebGlShader',
+  'Element', 
+  'MouseEvent', 
+  'HtmlCanvasElement', 
+  'Document', 
+  'Window'
 ] }
 
 web-time = "1.1"

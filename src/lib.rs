@@ -7,6 +7,8 @@ use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, WebGlBuffer};
+use std::rc::{Rc};
+use std::cell::{RefCell};
 
 
 #[wasm_bindgen]
@@ -39,11 +41,17 @@ static FRAGMENT_SHADER: &'static str = r#"
     }
 "#;
 
-#[wasm_bindgen]
 pub struct Simulation {
     gl: WebGl2RenderingContext, 
     buffers: BufferPair, 
     state: solver::State, 
+    mouse_info: MouseInfo, 
+}
+
+pub struct MouseInfo {
+    mouse_x: Rc<RefCell<i32>>, 
+    mouse_y: Rc<RefCell<i32>>,
+    is_hovering: Rc<RefCell<bool>>,
 }
 
 pub struct BufferPair {
@@ -51,7 +59,7 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 20000;
+const NUM_PARTICLES: u32 = 12000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
@@ -59,15 +67,12 @@ const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u
 const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
 const MAX_SPEED: f32 = 4.0;
 
-#[wasm_bindgen]
 impl Simulation {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        canvas: &web_sys::OffscreenCanvas
-    ) -> Result<Simulation, JsValue> {
+    pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<Simulation, JsValue> {
         let (gl, buffers) = init_webgl(canvas)?;
         let state = solver::State::new(NUM_PARTICLES, FIELD_HEIGHT, FIELD_WIDTH, SCALE);
-        Ok(Simulation{ gl, buffers, state })
+        let mouse_info = MouseInfo::new(canvas)?;
+        Ok(Simulation{ gl, buffers, state, mouse_info })
     }
 
     pub fn draw(&self) {
@@ -106,7 +111,69 @@ impl Simulation {
     }
 }
 
-pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32> {
+impl MouseInfo {
+    pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<MouseInfo, JsValue> {
+        let mouse_x = Rc::new(RefCell::new(0));
+        let mouse_y = Rc::new(RefCell::new(0));
+        let is_hovering = Rc::new(RefCell::new(false));
+
+        {
+            let mouse_x = mouse_x.clone();
+            let mouse_y = mouse_y.clone();
+            add_event_listener(&canvas, "mousemove", move |event| {
+                let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
+                *mouse_x.borrow_mut() = mouse_event.offset_x();
+                *mouse_y.borrow_mut() = mouse_event.offset_y();
+            })?;
+        }
+
+        Ok(Self { mouse_x, mouse_y, is_hovering })
+    }
+
+
+}
+
+#[wasm_bindgen]
+pub fn start() -> Result<(), JsValue> {
+    let canvas = get_canvas_element_by_id("canvas")?;
+    let mut sim = Simulation::new(&canvas)?;
+
+    start_animation(move||{
+        sim.step();
+        sim.draw();
+    });
+        
+    Ok(())
+}
+
+fn request_animation_frame(f: &Closure<dyn FnMut()>) {
+    web_sys::window().unwrap()
+        .request_animation_frame(f.as_ref().unchecked_ref())
+        .expect("should register `requestAnimationFrame` OK");
+}
+
+fn start_animation<T>(mut handler: T)
+where T: 'static + FnMut()
+{ 
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
+    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        handler();
+        request_animation_frame(f.borrow().as_ref().unwrap());
+    }) as Box<dyn FnMut()>));
+
+    request_animation_frame(g.borrow().as_ref().unwrap());
+}
+
+fn get_canvas_element_by_id(id: &str) -> Result<web_sys::HtmlCanvasElement, JsValue> {
+    let document = web_sys::window().unwrap().document().unwrap();
+    document.get_element_by_id(id)
+        .ok_or(JsValue::from("Element doesn't exist."))?
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .or_else(|e| Err(JsValue::from(e)))
+}
+
+fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32> {
     particles.iter().flat_map(|particle|{
         let x = particle.position.x * scale;
         let y = particle.position.y * scale;
@@ -167,7 +234,7 @@ fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
 }
 
 fn init_webgl(
-    canvas: &web_sys::OffscreenCanvas
+    canvas: &web_sys::HtmlCanvasElement
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     // set up canvas and webgl context handle
     canvas.set_height(VIEW_HEIGHT);
@@ -267,4 +334,16 @@ fn set_color_attribute(
     }
 
     return Ok(());
+}
+
+
+fn add_event_listener<T>(target: &web_sys::Element, event_name: &str, handler: T) -> Result<(), JsValue>
+where
+    T: 'static + FnMut(web_sys::Event)
+{
+    let cb = Closure::wrap(Box::new(handler) as Box<dyn FnMut(_)>);
+    target.add_event_listener_with_callback(event_name, cb.as_ref().unchecked_ref())?;
+    cb.forget();
+
+    Ok(())
 }
