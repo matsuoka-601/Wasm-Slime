@@ -1,6 +1,8 @@
 mod utils;
 mod solver;
 
+use std::char::MAX;
+
 use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
@@ -49,12 +51,13 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 40000;
+const NUM_PARTICLES: u32 = 20000;
 const FIELD_HEIGHT: f32 = 1.5;
 const FIELD_WIDTH: f32 = 1.5;
 const VIEW_HEIGHT: u32 = 900;
 const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
 const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
+const MAX_SPEED: f32 = 4.0;
 
 #[wasm_bindgen]
 impl Simulation {
@@ -107,7 +110,7 @@ pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<
     particles.iter().flat_map(|particle|{
         let x = particle.position.x * scale;
         let y = particle.position.y * scale;
-        let size = particle.size * 1.2;
+        let size = particle.size;
         vec![
             x, y, 
             x + size, y, 
@@ -119,12 +122,39 @@ pub fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<
     }).collect()
 }
 
-pub fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32, f32) {
+    let i = (h * 6.0).floor() as u32;
+    let f = h * 6.0 - i as f32;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - f * s);
+    let t = v * (1.0 - (1.0 - f) * s);
+
+    let (mut r, mut g, mut b) = (0.0, 0.0, 0.0);
+    
+    match i % 6 {
+        0 => { r = v; g = t; b = p; }
+        1 => { r = q; g = v; b = p; }
+        2 => { r = p; g = v; b = t; }
+        3 => { r = p; g = q; b = v; }
+        4 => { r = t; g = p; b = v; }
+        5 => { r = v; g = p; b = q; }
+        _ => {}
+    }
+
+    (r, g, b, 1.0)
+}
+
+fn get_color_by_speed(speed: f32) -> (f32, f32, f32, f32) {
+    let normalized_speed = (speed.abs() / MAX_SPEED).min(1.0);
+    let hue = (1.0 - normalized_speed) * 0.7;
+    let saturation = 1.0;
+    let value = 1.0;
+    hsv_to_rgb(hue, saturation, value)
+}
+ 
+fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
     particles.iter().flat_map(|particle|{
-        let r = 0.0;
-        let g = 0.0;
-        let b = 1.0;
-        let a = 1.0;
+        let (r, g, b, a) = get_color_by_speed(particle.velocity.length());
         vec![
             r, g, b, a, 
             r, g, b, a, 

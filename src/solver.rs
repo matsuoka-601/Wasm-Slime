@@ -30,7 +30,7 @@ struct Neighbor{
 #[derive(Clone)]
 pub struct Particle {
     pub position: Vec2, 
-    velocity: Vec2, 
+    pub velocity: Vec2, 
     force: Vec2, 
     pressure: f32, 
     density: f32, 
@@ -57,8 +57,8 @@ const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 10.0;
-const STIFFNESS: f32 = 0.01;
+const TARGET_DENSITY: f32 = 6.0;
+const STIFFNESS: f32 = 0.003;
 const MASS: f32 = 1.0;
 const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
 const SPIKY_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
@@ -117,19 +117,19 @@ impl State {
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
                 particle.position.y = KERNEL_RADIUS;
-                particle.velocity.y = -0.3;
+                particle.velocity.y = -0.95;
             }
             if particle.position.y + 2.0 * KERNEL_RADIUS > field_height { 
                 particle.position.y = field_height - 2.0 * KERNEL_RADIUS;
-                particle.velocity.y = -0.3;
+                particle.velocity.y = -0.95;
             }
             if particle.position.x - KERNEL_RADIUS < 0.0 {
                 particle.position.x = KERNEL_RADIUS;
-                particle.velocity.x *= -0.3;
+                particle.velocity.x *= -0.95;
             }
             if particle.position.x + 2.0 * KERNEL_RADIUS > field_width {
                 particle.position.x = field_width - 2.0 * KERNEL_RADIUS;
-                particle.velocity.x *= -0.3;
+                particle.velocity.x *= -0.95;
             }
         });
     }
@@ -205,8 +205,6 @@ impl State {
                 let fgrv = pi.density * GRV;
                 particle.force = fpress + fvisc + fgrv;
             });
-        
-        log(&self.particles[0].density.to_string());
     }
 
     fn init_particles(num_particles: u32, scale: f32, field: &Field) -> Vec<Particle> {
@@ -216,7 +214,7 @@ impl State {
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
-        let mut y = 2.0 * KERNEL_RADIUS;
+        let mut y = 20.0 * KERNEL_RADIUS;
         loop {
             let mut x = field.width * 0.1;
             loop {
@@ -227,8 +225,8 @@ impl State {
                 let density = 0.0;
                 let size = PARTICLE_SIZE * scale;
                 particles.push(Particle{ position, velocity, force, pressure, density, size });
-                x += 1.3 * PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
-                if x > field.width * 0.9 {
+                x += PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
+                if x > field.width * 0.7 {
                     break;
                 }
                 if particles.len() == num_particles as usize {
