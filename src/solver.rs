@@ -6,6 +6,7 @@ use rand::rngs::StdRng;
 use rand::{SeedableRng, Rng};
 use web_time::Instant;
 use std::sync::atomic::{AtomicU32, Ordering};
+use crate::MouseInfo;
 
 use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
@@ -52,12 +53,14 @@ pub struct Cells {
 
 const DT: f32 = 0.001;
 const PARTICLE_SIZE: f32 = 0.005;
-const KERNEL_RADIUS: f32 = 2.5 * PARTICLE_SIZE;
+const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
+const MOUSE_RADIUS: f32 = 40.0 * PARTICLE_SIZE;
+const MOUSE_FORCE_STRENGTH: f32 = 500.0;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 6.0;
+const TARGET_DENSITY: f32 = 8.0;
 const STIFFNESS: f32 = 0.003;
 const MASS: f32 = 1.0;
 const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
@@ -93,18 +96,34 @@ impl State {
         Self { num_particles, particles, neighbors, field, cells, counter }
     }
 
-    pub fn step(&mut self) {
+    pub fn step(&mut self, mouse_info: &MouseInfo) {
         let t1 = benchmark!({self.cells.register_cells(&self.particles)});
         let t2 = benchmark!({self.compute_density_pressure()});
         let t3 = benchmark!({self.compute_force()});
-        let t4 = benchmark!({self.handle_boundary()});
-        let s = format!("{}us, {}us, {}us, {}us", t1, t2, t3, t4);
+        let t4 = if *mouse_info.is_hovering.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
+        let t5 = benchmark!({self.handle_boundary()});
+        let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
         // log(&s);
         // println!("{}", s);
         // self.cells.register_cells(&self.particles);
         // self.compute_density_pressure();
         // self.compute_force();
         // self.handle_boundary();
+    }
+
+    fn mouse_force(&mut self, mouse_info: &MouseInfo) {
+        let mouse_vec = Vec2::new(
+            *mouse_info.mouse_x.borrow(), 
+            *mouse_info.mouse_y.borrow()
+        );
+
+        self.particles.par_iter_mut().for_each(|particle|{
+            let dx = mouse_vec - particle.position;
+            if dx.length() < MOUSE_RADIUS {
+                let dir = dx.normalize_or_zero();
+                particle.force += MOUSE_FORCE_STRENGTH * dir;
+            }
+        });
     }
 
     fn handle_boundary(&mut self) {

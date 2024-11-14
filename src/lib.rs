@@ -5,6 +5,7 @@ use std::char::MAX;
 
 use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
+use web_time::Instant;
 
 use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, WebGlBuffer};
 use std::rc::{Rc};
@@ -48,9 +49,10 @@ pub struct Simulation {
     mouse_info: MouseInfo, 
 }
 
+#[derive(Debug)]
 pub struct MouseInfo {
-    mouse_x: Rc<RefCell<i32>>, 
-    mouse_y: Rc<RefCell<i32>>,
+    mouse_x: Rc<RefCell<f32>>, 
+    mouse_y: Rc<RefCell<f32>>,
     is_hovering: Rc<RefCell<bool>>,
 }
 
@@ -66,6 +68,14 @@ const VIEW_HEIGHT: u32 = 900;
 const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
 const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
 const MAX_SPEED: f32 = 4.0;
+
+macro_rules! benchmark {
+    ($code:block) => {{
+        let start = Instant::now(); 
+        $code
+        start.elapsed().as_micros()
+    }};
+}
 
 impl Simulation {
     pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<Simulation, JsValue> {
@@ -102,28 +112,35 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
-        self.state.counter.store(0, std::sync::atomic::Ordering::SeqCst);
-        for _ in 0..10 {
-            self.state.step();
-        }
-        let s = format!("{:?}", self.state.counter);
-        // log(&s);
+        let t = benchmark!({
+            for _ in 0..10 {
+                self.state.step(&self.mouse_info);
+            }
+        });
+        let s = format!("{} ms", t / 1000);
+        log(&s);
     }
 }
 
 impl MouseInfo {
     pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<MouseInfo, JsValue> {
-        let mouse_x = Rc::new(RefCell::new(0));
-        let mouse_y = Rc::new(RefCell::new(0));
+        let mouse_x = Rc::new(RefCell::new(0.0));
+        let mouse_y = Rc::new(RefCell::new(0.0));
         let is_hovering = Rc::new(RefCell::new(false));
 
         {
             let mouse_x = mouse_x.clone();
             let mouse_y = mouse_y.clone();
+            let is_hovering_move = is_hovering.clone();
+            let is_hovering_leave = is_hovering.clone();
             add_event_listener(&canvas, "mousemove", move |event| {
                 let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
-                *mouse_x.borrow_mut() = mouse_event.offset_x();
-                *mouse_y.borrow_mut() = mouse_event.offset_y();
+                *is_hovering_move.borrow_mut() = true;
+                *mouse_x.borrow_mut() = mouse_event.offset_x() as f32 / VIEW_WIDTH as f32 * FIELD_WIDTH as f32;
+                *mouse_y.borrow_mut() = FIELD_HEIGHT - mouse_event.offset_y() as f32 / VIEW_HEIGHT as f32 * FIELD_HEIGHT as f32;
+            })?;
+            add_event_listener(&canvas, "mouseleave", move|event|{
+                *is_hovering_leave.borrow_mut() = false;
             })?;
         }
 
