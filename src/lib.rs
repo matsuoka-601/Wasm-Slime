@@ -7,9 +7,9 @@ use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 use web_time::Instant;
 
-use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader, WebGlBuffer};
-use std::rc::{Rc};
-use std::cell::{RefCell};
+use web_sys::{WebGl2RenderingContext, WebGlBuffer, WebGlProgram, WebGlShader, Window};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 
 #[wasm_bindgen]
@@ -60,6 +60,8 @@ pub struct Simulation {
     buffers: BufferPair, 
     state: solver::State, 
     mouse_info: MouseInfo, 
+    window_size: WindowSize, 
+    scale: f32, 
 }
 
 #[derive(Debug)]
@@ -69,17 +71,18 @@ pub struct MouseInfo {
     is_hovering: Rc<RefCell<bool>>,
 }
 
-pub struct BufferPair {
+struct BufferPair {
     color_buffer: WebGlBuffer, 
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 10000;
+struct WindowSize {
+    width: f32, 
+    height: f32, 
+}
+
+const NUM_PARTICLES: u32 = 15000;
 const FIELD_HEIGHT: f32 = 0.8;
-const FIELD_WIDTH: f32 = 0.8;
-const VIEW_HEIGHT: u32 = 900;
-const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
-const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
 const MAX_SPEED: f32 = 4.0;
 
 macro_rules! benchmark {
@@ -92,10 +95,13 @@ macro_rules! benchmark {
 
 impl Simulation {
     pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<Simulation, JsValue> {
-        let (gl, buffers) = init_webgl(canvas)?;
-        let state = solver::State::new(NUM_PARTICLES, FIELD_HEIGHT, FIELD_WIDTH, SCALE);
-        let mouse_info = MouseInfo::new(canvas)?;
-        Ok(Simulation{ gl, buffers, state, mouse_info })
+        let window_size = get_window_size()?;
+        let scale = window_size.height / FIELD_HEIGHT;
+        let (gl, buffers) = init_webgl(canvas, &window_size, scale)?;
+        let field = solver::Field{ width: FIELD_HEIGHT * (window_size.width / window_size.height), height: FIELD_HEIGHT };
+        let state = solver::State::new(NUM_PARTICLES, field);
+        let mouse_info = MouseInfo::new(canvas, scale)?;
+        Ok(Simulation{ gl, buffers, state, mouse_info, scale, window_size })
     }
 
     pub fn draw(&self) {
@@ -106,8 +112,7 @@ impl Simulation {
         self.gl.enable(WebGl2RenderingContext::BLEND);
         self.gl.blend_func(WebGl2RenderingContext::SRC_ALPHA, WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA);
 
-        let scale = VIEW_HEIGHT as f32 / FIELD_HEIGHT as f32;
-        let positions = generate_positions(&self.state.particles, scale);
+        let positions = self.generate_positions();
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.position_buffer));
         unsafe {
             self.gl.buffer_data_with_array_buffer_view(
@@ -117,7 +122,7 @@ impl Simulation {
             );
         }
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.color_buffer));
-        let colors = generate_colors(&self.state.particles);
+        let colors = self.generate_colors();
         unsafe {
             self.gl.buffer_data_with_array_buffer_view(
                 WebGl2RenderingContext::ARRAY_BUFFER, 
@@ -128,19 +133,30 @@ impl Simulation {
         self.gl.draw_arrays(WebGl2RenderingContext::POINTS, 0, self.state.num_particles as i32);
     }
 
+    fn generate_positions(&self) -> Vec<f32> {
+        self.state.particles.iter().flat_map(|particle|{
+            let x = particle.position.x * self.scale;
+            let y = particle.position.y * self.scale;
+            vec![ x, y ]
+        }).collect()
+    }
+
+    fn generate_colors(&self) -> Vec<f32> {
+        self.state.particles.iter().flat_map(|particle|{
+            let (r, g, b, a) = get_color_by_speed(particle.velocity.length());
+            vec![ r, g, b ]
+        }).collect()
+    }
+
     pub fn step(&mut self) {
-        let t = benchmark!({
-            for _ in 0..10 {
-                self.state.step(&self.mouse_info);
-            }
-        });
+        let t = benchmark!({self.state.update(&self.mouse_info)});
         let s = format!("{} ms", t / 1000);
         log(&s);
     }
 }
 
 impl MouseInfo {
-    pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<MouseInfo, JsValue> {
+    pub fn new(canvas: &web_sys::HtmlCanvasElement, scale: f32) -> Result<MouseInfo, JsValue> {
         let mouse_x = Rc::new(RefCell::new(0.0));
         let mouse_y = Rc::new(RefCell::new(0.0));
         let is_hovering = Rc::new(RefCell::new(false));
@@ -153,8 +169,8 @@ impl MouseInfo {
             add_event_listener(&canvas, "mousemove", move |event| {
                 let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
                 *is_hovering_move.borrow_mut() = true;
-                *mouse_x.borrow_mut() = mouse_event.offset_x() as f32 / VIEW_WIDTH as f32 * FIELD_WIDTH as f32;
-                *mouse_y.borrow_mut() = FIELD_HEIGHT - mouse_event.offset_y() as f32 / VIEW_HEIGHT as f32 * FIELD_HEIGHT as f32;
+                *mouse_x.borrow_mut() = mouse_event.offset_x() as f32 / scale;
+                *mouse_y.borrow_mut() = FIELD_HEIGHT - mouse_event.offset_y() as f32 / scale;
             })?;
             add_event_listener(&canvas, "mouseleave", move|event|{
                 *is_hovering_leave.borrow_mut() = false;
@@ -180,8 +196,19 @@ pub fn start() -> Result<(), JsValue> {
     Ok(())
 }
 
+fn window() -> web_sys::Window {
+    web_sys::window().expect("no global `window` exists")
+}
+
+fn get_window_size() -> Result<WindowSize, JsValue> {
+    let window = window();
+    let width = window.inner_width()?.as_f64().unwrap() as f32;
+    let height = window.inner_height()?.as_f64().unwrap() as f32;
+    Ok(WindowSize { width, height })
+}
+
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
-    web_sys::window().unwrap()
+    window()
         .request_animation_frame(f.as_ref().unchecked_ref())
         .expect("should register `requestAnimationFrame` OK");
 }
@@ -205,17 +232,6 @@ fn get_canvas_element_by_id(id: &str) -> Result<web_sys::HtmlCanvasElement, JsVa
         .ok_or(JsValue::from("Element doesn't exist."))?
         .dyn_into::<web_sys::HtmlCanvasElement>()
         .or_else(|e| Err(JsValue::from(e)))
-}
-
-fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32> {
-    particles.iter().flat_map(|particle|{
-        let x = particle.position.x * scale;
-        let y = particle.position.y * scale;
-        let size = particle.size;
-        vec![
-            x, y, 
-        ]
-    }).collect()
 }
 
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32, f32) {
@@ -247,22 +263,14 @@ fn get_color_by_speed(speed: f32) -> (f32, f32, f32, f32) {
     let value = 1.0;
     hsv_to_rgb(hue, saturation, value)
 }
- 
-fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
-    particles.iter().flat_map(|particle|{
-        let (r, g, b, a) = get_color_by_speed(particle.velocity.length());
-        vec![
-            r, g, b, 
-        ]
-    }).collect()
-}
 
 fn init_webgl(
-    canvas: &web_sys::HtmlCanvasElement
+    canvas: &web_sys::HtmlCanvasElement, 
+    window_size: &WindowSize, 
+    scale: f32
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
-    // set up canvas and webgl context handle
-    canvas.set_height(VIEW_HEIGHT);
-    canvas.set_width(VIEW_WIDTH);
+    canvas.set_height(window_size.height as u32);
+    canvas.set_width(window_size.width as u32);
 
     let gl = canvas
         .get_context("webgl2")?
@@ -283,7 +291,7 @@ fn init_webgl(
     let resolution_location = gl.get_uniform_location(&shader_program, "uResolution").unwrap();
     gl.uniform2f(Some(&resolution_location), canvas.width() as f32, canvas.height() as f32);
     let radius_location = gl.get_uniform_location(&shader_program, "uRadius").unwrap();
-    gl.uniform1f(Some(&radius_location), SCALE * solver::PARTICLE_SIZE as f32);
+    gl.uniform1f(Some(&radius_location), scale * solver::PARTICLE_SIZE as f32);
 
     Ok((gl, BufferPair{ position_buffer, color_buffer }))
 }

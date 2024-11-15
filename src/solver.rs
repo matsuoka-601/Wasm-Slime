@@ -69,6 +69,7 @@ const VISC_LAP: f32 = 4.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4);
 const VISCOSITY: f32 = 0.5;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
+const SOLVER_STEPS: u32 = 10;
 
 #[wasm_bindgen]
 extern "C" {
@@ -87,22 +88,23 @@ macro_rules! benchmark {
 }
 
 impl State {
-    pub fn new(num_particles: u32, height: f32, width: f32, scale: f32) -> Self {
-        let field = Field { height, width };
+    pub fn new(num_particles: u32, field: Field) -> Self {
         let neighbors = vec![Vec::with_capacity(64); num_particles as usize];
-        let particles = Self::init_particles(num_particles, scale, &field);
-        let cells = Cells::new(height, width, KERNEL_RADIUS);
+        let particles = Self::init_particles(num_particles, &field);
+        let cells = Cells::new(field.height, field.width, KERNEL_RADIUS);
         let counter = AtomicU32::new(0);
         Self { num_particles, particles, neighbors, field, cells, counter }
     }
 
-    pub fn step(&mut self, mouse_info: &MouseInfo) {
-        let t1 = benchmark!({self.cells.register_cells(&self.particles)});
-        let t2 = benchmark!({self.compute_density_pressure()});
-        let t3 = benchmark!({self.compute_force()});
-        let t4 = if *mouse_info.is_hovering.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
-        let t5 = benchmark!({self.handle_boundary()});
-        let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
+    pub fn update(&mut self, mouse_info: &MouseInfo) {
+        for _ in 0..SOLVER_STEPS {
+            let t1 = benchmark!({self.cells.register_cells(&self.particles)});
+            let t2 = benchmark!({self.compute_density_pressure()});
+            let t3 = benchmark!({self.compute_force()});
+            let t4 = if *mouse_info.is_hovering.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
+            let t5 = benchmark!({self.handle_boundary()});
+            let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
+        }
         // log(&s);
         // println!("{}", s);
         // self.cells.register_cells(&self.particles);
@@ -136,19 +138,19 @@ impl State {
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
                 particle.position.y = KERNEL_RADIUS;
-                particle.velocity.y = -0.95;
+                particle.velocity.y = -0.3;
             }
-            if particle.position.y + 2.0 * KERNEL_RADIUS > field_height { 
-                particle.position.y = field_height - 2.0 * KERNEL_RADIUS;
-                particle.velocity.y = -0.95;
+            if particle.position.y + KERNEL_RADIUS > field_height { 
+                particle.position.y = field_height - KERNEL_RADIUS;
+                particle.velocity.y = -0.3;
             }
             if particle.position.x - KERNEL_RADIUS < 0.0 {
                 particle.position.x = KERNEL_RADIUS;
-                particle.velocity.x *= -0.95;
+                particle.velocity.x *= -0.3;
             }
-            if particle.position.x + 2.0 * KERNEL_RADIUS > field_width {
-                particle.position.x = field_width - 2.0 * KERNEL_RADIUS;
-                particle.velocity.x *= -0.95;
+            if particle.position.x + KERNEL_RADIUS > field_width {
+                particle.position.x = field_width - KERNEL_RADIUS;
+                particle.velocity.x *= -0.3;
             }
         });
     }
@@ -226,7 +228,7 @@ impl State {
             });
     }
 
-    fn init_particles(num_particles: u32, scale: f32, field: &Field) -> Vec<Particle> {
+    fn init_particles(num_particles: u32, field: &Field) -> Vec<Particle> {
         let mut particles = Vec::new();
         particles.reserve(num_particles as usize);
 
@@ -242,7 +244,7 @@ impl State {
                 let force = Vec2::new(0.0, 0.0);
                 let pressure = 0.0;
                 let density = 0.0;
-                let size = PARTICLE_SIZE * scale;
+                let size = PARTICLE_SIZE;
                 particles.push(Particle{ position, velocity, force, pressure, density, size });
                 x += PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
                 if x > field.width * 0.7 {

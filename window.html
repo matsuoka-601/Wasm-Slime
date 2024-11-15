@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ウィンドウサイズの表示</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #window-size {
+            font-size: 24px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>ウィンドウサイズ</h1>
+    <p id="window-size">Width: 0, Height: 0</p>
+
+    <script>
+        function updateWindowSize() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            document.getElementById('window-size').textContent = `Width: ${width}, Height: ${height}`;
+        }
+
+        // 初期表示
+        updateWindowSize();
+
+        // ウィンドウがリサイズされるたびに更新
+        window.addEventListener('resize', updateWindowSize);
+    </script>
+</body>
+</html>
