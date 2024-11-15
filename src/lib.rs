@@ -22,23 +22,36 @@ extern "C" {
 
 static VERTEX_SHADER: &'static str = r#"
     varying highp vec3 vLighting;
-        attribute vec2 aPosition;
-        attribute vec4 aColor; 
-        varying vec4 vColor; 
-        uniform vec2 uResolution;
+    attribute vec2 aPosition;
+    attribute vec3 aColor; 
+    varying vec3 vColor; 
+    uniform vec2 uResolution;
+    uniform float uRadius;
 
-        void main() {
-            vec2 position = (aPosition / uResolution) * 2.0 - 1.0;
-            gl_Position = vec4(position, 0, 1);
-            vColor = aColor; 
-        }
+    void main() {
+        vec2 position = (aPosition / uResolution) * 2.0 - 1.0;
+        gl_Position = vec4(position, 0, 1);
+        float radius = uRadius * 0.8;
+        gl_PointSize = radius * 2.0;
+        vColor = aColor; 
+    }
 "#;
 
 static FRAGMENT_SHADER: &'static str = r#"
     precision mediump float;
-    varying vec4 vColor; 
+    varying vec3 vColor; 
     void main() {
-        gl_FragColor = vColor;
+        lowp vec2 pos = gl_PointCoord - vec2(0.5, 0.5);
+		lowp float dist_squared = dot(pos, pos);
+        lowp float alpha;
+
+        if (dist_squared < 0.25) {
+            alpha = 1.0;
+        } else {
+            alpha = 0.0;
+        }
+
+        gl_FragColor = vec4(vColor, alpha);
     }
 "#;
 
@@ -61,9 +74,9 @@ pub struct BufferPair {
     position_buffer: WebGlBuffer, 
 }
 
-const NUM_PARTICLES: u32 = 12000;
-const FIELD_HEIGHT: f32 = 1.5;
-const FIELD_WIDTH: f32 = 1.5;
+const NUM_PARTICLES: u32 = 10000;
+const FIELD_HEIGHT: f32 = 0.8;
+const FIELD_WIDTH: f32 = 0.8;
 const VIEW_HEIGHT: u32 = 900;
 const VIEW_WIDTH: u32 = (VIEW_HEIGHT as f32 * (FIELD_WIDTH / FIELD_HEIGHT)) as u32;
 const SCALE: f32 = VIEW_HEIGHT as f32 / FIELD_HEIGHT;
@@ -89,6 +102,10 @@ impl Simulation {
         self.gl.clear_color(0.4, 0.4, 0.4, 1.0);
         self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 
+        // アルファ値の設定のために必要らしい？（TODO : 調べる）
+        self.gl.enable(WebGl2RenderingContext::BLEND);
+        self.gl.blend_func(WebGl2RenderingContext::SRC_ALPHA, WebGl2RenderingContext::ONE_MINUS_SRC_ALPHA);
+
         let scale = VIEW_HEIGHT as f32 / FIELD_HEIGHT as f32;
         let positions = generate_positions(&self.state.particles, scale);
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&self.buffers.position_buffer));
@@ -108,7 +125,7 @@ impl Simulation {
                 WebGl2RenderingContext::DYNAMIC_DRAW
             );
         }
-        self.gl.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, 6 * self.state.num_particles as i32);
+        self.gl.draw_arrays(WebGl2RenderingContext::POINTS, 0, self.state.num_particles as i32);
     }
 
     pub fn step(&mut self) {
@@ -197,11 +214,6 @@ fn generate_positions(particles: &Vec<solver::Particle>, scale: f32) -> Vec<f32>
         let size = particle.size;
         vec![
             x, y, 
-            x + size, y, 
-            x, y + size, 
-            x, y + size, 
-            x + size, y, 
-            x + size, y + size
         ]
     }).collect()
 }
@@ -240,12 +252,7 @@ fn generate_colors(particles: &Vec<solver::Particle>) -> Vec<f32> {
     particles.iter().flat_map(|particle|{
         let (r, g, b, a) = get_color_by_speed(particle.velocity.length());
         vec![
-            r, g, b, a, 
-            r, g, b, a, 
-            r, g, b, a, 
-            r, g, b, a, 
-            r, g, b, a, 
-            r, g, b, a  
+            r, g, b, 
         ]
     }).collect()
 }
@@ -275,7 +282,8 @@ fn init_webgl(
 
     let resolution_location = gl.get_uniform_location(&shader_program, "uResolution").unwrap();
     gl.uniform2f(Some(&resolution_location), canvas.width() as f32, canvas.height() as f32);
-
+    let radius_location = gl.get_uniform_location(&shader_program, "uRadius").unwrap();
+    gl.uniform1f(Some(&radius_location), SCALE * solver::PARTICLE_SIZE as f32);
 
     Ok((gl, BufferPair{ position_buffer, color_buffer }))
 }
@@ -344,7 +352,7 @@ fn set_color_attribute(
     let position_location = gl.get_attrib_location(program, "aColor");
 
     if position_location >= 0 {
-        gl.vertex_attrib_pointer_with_i32(position_location as u32, 4, WebGl2RenderingContext::FLOAT, false, 0, 0);
+        gl.vertex_attrib_pointer_with_i32(position_location as u32, 3, WebGl2RenderingContext::FLOAT, false, 0, 0);
         gl.enable_vertex_attrib_array(position_location as u32);
     } else {
         return Err(JsValue::from_str("cannot set color attribute"));
