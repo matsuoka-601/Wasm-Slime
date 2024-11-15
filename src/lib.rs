@@ -60,7 +60,6 @@ pub struct Simulation {
     buffers: BufferPair, 
     state: solver::State, 
     mouse_info: MouseInfo, 
-    window_size: WindowSize, 
     scale: f32, 
 }
 
@@ -68,7 +67,7 @@ pub struct Simulation {
 pub struct MouseInfo {
     mouse_x: Rc<RefCell<f32>>, 
     mouse_y: Rc<RefCell<f32>>,
-    is_hovering: Rc<RefCell<bool>>,
+    is_dragging: Rc<RefCell<bool>>,
 }
 
 struct BufferPair {
@@ -81,7 +80,7 @@ struct WindowSize {
     height: f32, 
 }
 
-const NUM_PARTICLES: u32 = 15000;
+const NUM_PARTICLES: u32 = 12000;
 const FIELD_HEIGHT: f32 = 0.8;
 const MAX_SPEED: f32 = 4.0;
 
@@ -101,7 +100,7 @@ impl Simulation {
         let field = solver::Field{ width: FIELD_HEIGHT * (window_size.width / window_size.height), height: FIELD_HEIGHT };
         let state = solver::State::new(NUM_PARTICLES, field);
         let mouse_info = MouseInfo::new(canvas, scale)?;
-        Ok(Simulation{ gl, buffers, state, mouse_info, scale, window_size })
+        Ok(Simulation{ gl, buffers, state, mouse_info, scale })
     }
 
     pub fn draw(&self) {
@@ -159,25 +158,40 @@ impl MouseInfo {
     pub fn new(canvas: &web_sys::HtmlCanvasElement, scale: f32) -> Result<MouseInfo, JsValue> {
         let mouse_x = Rc::new(RefCell::new(0.0));
         let mouse_y = Rc::new(RefCell::new(0.0));
-        let is_hovering = Rc::new(RefCell::new(false));
+        let is_dragging = Rc::new(RefCell::new(false));
 
         {
             let mouse_x = mouse_x.clone();
             let mouse_y = mouse_y.clone();
-            let is_hovering_move = is_hovering.clone();
-            let is_hovering_leave = is_hovering.clone();
             add_event_listener(&canvas, "mousemove", move |event| {
                 let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
-                *is_hovering_move.borrow_mut() = true;
                 *mouse_x.borrow_mut() = mouse_event.offset_x() as f32 / scale;
                 *mouse_y.borrow_mut() = FIELD_HEIGHT - mouse_event.offset_y() as f32 / scale;
             })?;
+        }
+
+        {
+            let is_dragging = is_dragging.clone();
             add_event_listener(&canvas, "mouseleave", move|event|{
-                *is_hovering_leave.borrow_mut() = false;
+                *is_dragging.borrow_mut() = false;
             })?;
         }
 
-        Ok(Self { mouse_x, mouse_y, is_hovering })
+        {
+            let is_dragging = is_dragging.clone();
+            add_event_listener(&canvas, "mouseup", move|event|{
+                *is_dragging.borrow_mut() = false;
+            })?;
+        }
+
+        {
+            let is_dragging = is_dragging.clone();
+            add_event_listener(&canvas, "mousedown", move|event|{
+                *is_dragging.borrow_mut() = true;
+            })?;
+        }
+
+        Ok(Self { mouse_x, mouse_y, is_dragging })
     }
 
 

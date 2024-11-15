@@ -101,7 +101,7 @@ impl State {
             let t1 = benchmark!({self.cells.register_cells(&self.particles)});
             let t2 = benchmark!({self.compute_density_pressure()});
             let t3 = benchmark!({self.compute_force()});
-            let t4 = if *mouse_info.is_hovering.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
+            let t4 = if *mouse_info.is_dragging.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
             let t5 = benchmark!({self.handle_boundary()});
             let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
         }
