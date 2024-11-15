@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WebGL - 四角を描画</title>
     <style>
-        body {
+        /* スクロールバーを表示しないようにする */
+        html, body {
             margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #222; /* 背景色 */
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* スクロールバーを非表示にする */
         }
         canvas {
             border: 1px solid #fff; /* キャンバスの境界線 */
