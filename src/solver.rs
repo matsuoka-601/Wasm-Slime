@@ -35,8 +35,8 @@ pub struct Particle {
     force: Vec2, 
     pressure: f32, 
     density: f32, 
-    // near_pressure: f32, 
-    // near_density: f32,
+    near_pressure: f32, 
+    near_density: f32,
     pub size: f32, 
 }
 
@@ -60,13 +60,16 @@ const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW8: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4;
-const TARGET_DENSITY: f32 = 8.0;
-const STIFFNESS: f32 = 0.003;
+const TARGET_DENSITY: f32 = 9.0;
+const STIFFNESS: f32 = 0.008;
+const NEAR_STIFFNESS: f32 = 8e-5;
 const MASS: f32 = 1.0;
-const POLY6: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
-const SPIKY_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
-const VISC_LAP: f32 = 4.0 / (PI * KERNEL_RADIUS_POW4 * KERNEL_RADIUS_POW4); 
-const VISCOSITY: f32 = 0.5;
+const SPIKY_POW2: f32 = 6.0 / (PI * KERNEL_RADIUS_POW4); 
+const SPIKY_POW3: f32 = 10.0 / (PI * KERNEL_RADIUS_POW5);
+const SPIKY_POW2_GRAD: f32 = 12.0 / (PI * KERNEL_RADIUS_POW4); 
+const SPIKY_POW3_GRAD: f32 = 30.0 / (PI * KERNEL_RADIUS_POW5); 
+const VISC_LAP: f32 = 4.0 / (PI * KERNEL_RADIUS_POW8); 
+const VISCOSITY: f32 = 0.3;
 const EPS: f32 = 1e-30;
 const GRV: Vec2 = Vec2::new(0.0, -9.8);
 const SOLVER_STEPS: u32 = 10;
@@ -184,7 +187,8 @@ impl State {
                             let r = (pj.position - pi.position).length();
                             if r < KERNEL_RADIUS {
                                 let a = KERNEL_RADIUS_SQ - r * r;
-                                particle.density += MASS * POLY6 * a * a;
+                                particle.density += MASS * SPIKY_POW2 * a * a;
+                                particle.near_density += MASS * SPIKY_POW3 * a * a * a;
                                 if EPS < r {
                                     neighbors.push(Neighbor{j: *j, r});
                                 }
@@ -193,6 +197,7 @@ impl State {
                     }
                 }
                 particle.pressure = STIFFNESS * (particle.density - TARGET_DENSITY);
+                particle.near_pressure = NEAR_STIFFNESS * particle.near_density;
             });
     }
 
@@ -213,11 +218,16 @@ impl State {
                     let pj = &particles_copy[*j as usize];
                     let rij = pj.position - pi.position;
     
+                    // Pressure
                     let a = KERNEL_RADIUS - *r;
-                    let aa = KERNEL_RADIUS_SQ - *r * *r;
                     let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
-                    let press_coeff = -MASS * shared_pressure * SPIKY_GRAD * a / pj.density;
-                    fpress += press_coeff * rij.normalize();
+                    let press_coeff = -MASS * shared_pressure * SPIKY_POW2_GRAD * a / pj.density;
+                    let near_shared_pressure = (pi.near_pressure + pj.near_pressure) / 2.0;
+                    let near_press_coeff = -MASS * near_shared_pressure * SPIKY_POW3_GRAD * a * a / pj.near_density; 
+                    fpress += (press_coeff + near_press_coeff) * rij.normalize();
+
+                    // Viscosity
+                    let aa = KERNEL_RADIUS_SQ - *r * *r;
                     let visc_coeff = VISCOSITY * MASS * VISC_LAP * aa * aa * aa / pj.density;
                     let relative_speed = pj.velocity - pi.velocity;
                     fvisc += visc_coeff * relative_speed;
@@ -235,7 +245,7 @@ impl State {
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
-        let mut y = 2.0 * KERNEL_RADIUS;
+        let mut y = 20.0 * KERNEL_RADIUS;
         loop {
             let mut x = field.width * 0.1;
             loop {
@@ -243,11 +253,13 @@ impl State {
                 let velocity = Vec2::new(0.0, 0.0);
                 let force = Vec2::new(0.0, 0.0);
                 let pressure = 0.0;
+                let near_pressure = 0.0;
                 let density = 0.0;
+                let near_density = 0.0;
                 let size = PARTICLE_SIZE;
-                particles.push(Particle{ position, velocity, force, pressure, density, size });
+                particles.push(Particle{ position, velocity, force, pressure, near_pressure, density, near_density, size });
                 x += PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
-                if x > field.width * 0.7 {
+                if x > field.width * 0.9 {
                     break;
                 }
                 if particles.len() == num_particles as usize {
