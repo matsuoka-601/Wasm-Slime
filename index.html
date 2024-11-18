@@ -36,15 +36,16 @@
         }
 
         #slider {
-            width: 250px;
+            width: 200px;
+            height: 10px;
         }
 
         #slider .noUi-handle {
-            height: 30px;
-            width: 30px;
-            top: -5px;
-            right: -15px; /* half the width */
-            border-radius: 15px;
+            height: 24px;
+            width: 24px;
+            top: -8px;
+            right: -12px; /* half the width */
+            border-radius: 12px;
         }
 
         #slider .noUi-handle:before, #slider .noUi-handle:after {
@@ -53,9 +54,9 @@
 
         #slider-value, #slider-text, #thread-count {
             font-family: 'Roboto', sans-serif;
-            font-size: 25px; /* 文字サイズを大きく変更 */
+            font-size: 15px; 
             color: white;
-            margin-left: 20px;
+            margin-left: 15px;
         }
 
         #slider-text {
@@ -66,21 +67,21 @@
         }
 
         #reset-button {
-            margin-top: 20px;
+            margin-top: 15px;
             margin-left: 10px;
-            padding: 10px 20px;
+            padding: 8px 16px;
             background-color: black;
             color: white;
             border: none;
             border-radius: 5px;
-            font-size: 24px;
+            font-size: 15px;
             font-weight:bold;
             cursor: pointer;
             transition: background-color 0.3s;
         }
 
         #thread-count {
-            margin-top: 20px;
+            margin-top: 10px;
             margin-left: 10px;
         }
 
@@ -88,6 +89,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js" integrity="sha512-g/feAizmeiVKSwvfW0Xk3ZHZqv5Zs8PEXEBKzL15pM0SevEvoX8eJ4yFWbqakvRj7vtw1Q97bLzEpG2IVWX0Mg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.css" integrity="sha512-MKxcSu/LDtbIYHBNAWUQwfB3iVoG9xeMCm32QV5hZ/9lFaQZJVaXfz9aFa0IZExWzCpm7OWvp9zq9gVip/nLMg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.umd.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.min.css" rel="stylesheet">
+
     <script src="index.js" type="module"></script>
 
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
@@ -139,6 +143,7 @@
     <a href="https://github.com/matsuoka-601/wasm-fluid-simulation" class="github-icon" target="_blank">
         <i class="fab fa-github"></i>
     </a>
+
     <canvas id="canvas"></canvas>
 </body>
 </html>
