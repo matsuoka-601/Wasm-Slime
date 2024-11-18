@@ -51,7 +51,7 @@ pub struct Cells {
     pub ny: usize, 
 }
 
-const DT: f32 = 0.001;
+const DT: f32 = 0.0010;
 pub const PARTICLE_SIZE: f32 = 0.005;
 const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
 const MOUSE_RADIUS: f32 = 20.0 * PARTICLE_SIZE;
@@ -107,6 +107,7 @@ impl State {
             let t4 = if *mouse_info.is_dragging.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
             let t5 = benchmark!({self.handle_boundary()});
             let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
+            // log(&s);
         }
         // log(&s);
         // println!("{}", s);
@@ -136,7 +137,7 @@ impl State {
         let field_width = self.field.width;
 
         self.particles.par_iter_mut().for_each(|particle|{
-            particle.velocity += particle.force * (DT / particle.density);
+            particle.velocity += (particle.force / particle.density) * DT;
             particle.position += particle.velocity * DT;
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
