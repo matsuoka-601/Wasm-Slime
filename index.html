@@ -3,8 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebGL - 四角を描画</title>
+    <title>Fluid simulation</title>
     <style>
+        * {
+            font-family: 'Roboto', sans-serif; 
+        }
         /* スクロールバーを表示しないようにする */
         html, body {
             margin: 0;
@@ -16,10 +19,126 @@
         canvas {
             border: 1px solid #fff; /* キャンバスの境界線 */
         }
+
+        #slider-container {
+            position: fixed; /* 固定位置 */
+            top: 0; /* 上端に配置 */
+            left: 0; /* 左端に配置 */
+            width: 500px; /* スライダーの幅 */
+            margin: 20px; /* 少し余白を追加 */  
+        }
+
+        #slider-wrapper {
+            display: flex;
+            align-items: center;      /* 水平方向で中央揃えにする */
+            height: 100%;             /* 親要素の高さを100%に設定 */
+            margin-left: 10px;
+        }
+
+        #slider {
+            width: 250px;
+        }
+
+        #slider .noUi-handle {
+            height: 30px;
+            width: 30px;
+            top: -5px;
+            right: -15px; /* half the width */
+            border-radius: 15px;
+        }
+
+        #slider .noUi-handle:before, #slider .noUi-handle:after {
+            display: none;
+        }
+
+        #slider-value, #slider-text, #thread-count {
+            font-family: 'Roboto', sans-serif;
+            font-size: 25px; /* 文字サイズを大きく変更 */
+            color: white;
+            margin-left: 20px;
+        }
+
+        #slider-text {
+            width: 100%;
+            margin-bottom: 10px;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        #reset-button {
+            margin-top: 20px;
+            margin-left: 10px;
+            padding: 10px 20px;
+            background-color: black;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 24px;
+            font-weight:bold;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #thread-count {
+            margin-top: 20px;
+            margin-left: 10px;
+        }
+
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js" integrity="sha512-g/feAizmeiVKSwvfW0Xk3ZHZqv5Zs8PEXEBKzL15pM0SevEvoX8eJ4yFWbqakvRj7vtw1Q97bLzEpG2IVWX0Mg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.css" integrity="sha512-MKxcSu/LDtbIYHBNAWUQwfB3iVoG9xeMCm32QV5hZ/9lFaQZJVaXfz9aFa0IZExWzCpm7OWvp9zq9gVip/nLMg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <script src="index.js" type="module"></script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        .github-icon {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 40px;
+            color: white; 
+        }
+    </style>
 </head>
 <body>
+    <div id="slider-container">
+        <div id="slider-text">Number of particles (reset to change)</div>
+        <div id="slider-wrapper">
+            <div id="slider"></div> <!-- スライダー -->
+            <div id="slider-value">6000</div> <!-- 値表示 -->
+        </div>
+        <button id="reset-button">Reset</button>
+        <div id="thread-count">Running with 12 threads</div>
+    </div>
+
+    <script>
+        const slider = document.getElementById('slider');
+        const sliderValue = document.getElementById('slider-value');
+
+        noUiSlider.create(slider, {
+            range: {
+                min: 3000, // 最小値
+                max: 30000 // 最大値
+            },
+            step: 500, // 刻み幅
+            start: 6000, 
+            connect: [true, false], // 左側を塗りつぶす（つまみが1つのみ）
+            animate: false
+        });
+
+        slider.noUiSlider.on('update', function(values, handle) {
+            sliderValue.textContent = Math.floor(values[0]); // 現在の値を表示
+        });
+    </script>
+
+    <a href="https://github.com/matsuoka-601/wasm-fluid-simulation" class="github-icon" target="_blank">
+        <i class="fab fa-github"></i>
+    </a>
     <canvas id="canvas"></canvas>
 </body>
 </html>
