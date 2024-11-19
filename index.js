@@ -10,6 +10,9 @@ async function run() {
     const numThreads = Math.min(12, navigator.hardwareConcurrency);
     await multithread.initThreadPool(numThreads);
 
+    const threadCountElement = document.getElementById('thread-count');
+    threadCountElement.textContent = `Running with ${numThreads} threads`;
+
     start();
 }
 
