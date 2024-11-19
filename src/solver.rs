@@ -141,8 +141,7 @@ impl State {
             particle.position += particle.velocity * DT;
 
             if particle.position.y - KERNEL_RADIUS < 0.0 {
-                particle.position.y = KERNEL_RADIUS;
-                particle.velocity.y = -0.3;
+                particle.velocity.y = (KERNEL_RADIUS - particle.position.y) / DT;
             }
             if particle.position.y + KERNEL_RADIUS > field_height { 
                 particle.position.y = field_height - KERNEL_RADIUS;
@@ -215,7 +214,7 @@ impl State {
                 let mut fvisc = Vec2::new(0.0, 0.0);
                 let pi = &particles_copy[i];
 
-                for Neighbor{ r, j} in neighbors {
+                for Neighbor{ r, j } in neighbors {
                     let pj = &particles_copy[*j as usize];
                     let rij = pj.position - pi.position;
     
