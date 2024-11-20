@@ -4,7 +4,7 @@ A 2d fluid simulator implemented with Rust + wasm-bindgen-rayon.
 
 ![img](img/demo.gif)
 
-Check the demo here! : https://fluid-simulation-test.netlify.app/
+**Check the demo here! (needs a browser that supports SharedArrayBuffer)** : https://fluid-simulation-test.netlify.app/
 
 The following is the brief description of the simulation.
 - Solver is implemented in Rust and compiled to WASM. 
