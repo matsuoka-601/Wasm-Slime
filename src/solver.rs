@@ -14,12 +14,10 @@ use std::f32::consts::PI;
 
 
 pub struct State {
-    pub num_particles: u32, 
     pub particles: Vec<Particle>, 
     neighbors: Vec<Vec<Neighbor>>, 
-    field: Field, 
+    pub field: Field, 
     cells: Cells, 
-    pub counter: AtomicU32
 }
 
 #[derive(Clone)]
@@ -54,8 +52,7 @@ pub struct Cells {
 const DT: f32 = 0.0010;
 pub const PARTICLE_SIZE: f32 = 0.005;
 const KERNEL_RADIUS: f32 = 2.0 * PARTICLE_SIZE;
-const MOUSE_RADIUS: f32 = 20.0 * PARTICLE_SIZE;
-const MOUSE_FORCE_STRENGTH: f32 = 500.0;
+const MOUSE_FORCE_STRENGTH: f32 = 200.0;
 const KERNEL_RADIUS_SQ: f32 = KERNEL_RADIUS * KERNEL_RADIUS;
 const KERNEL_RADIUS_POW4: f32 = KERNEL_RADIUS_SQ * KERNEL_RADIUS_SQ;
 const KERNEL_RADIUS_POW5: f32 = KERNEL_RADIUS_POW4 * KERNEL_RADIUS;
@@ -91,20 +88,27 @@ macro_rules! benchmark {
 }
 
 impl State {
-    pub fn new(num_particles: u32, field: Field) -> Self {
-        let neighbors = vec![Vec::with_capacity(64); num_particles as usize];
-        let particles = Self::init_particles(num_particles, &field);
-        let cells = Cells::new(field.height, field.width, KERNEL_RADIUS);
-        let counter = AtomicU32::new(0);
-        Self { num_particles, particles, neighbors, field, cells, counter }
+    pub fn new(num_particles: u32, aspect_ratio: f32) -> Self {
+        let neighbors = Vec::new();
+        let particles = Vec::new();
+        let height = Self::height_from_num_particles(num_particles);
+        let width = height * aspect_ratio;
+        let cells = Cells::new(height, width, KERNEL_RADIUS);
+        let field = Field { height, width };
+
+        let mut state = Self { particles, neighbors, field, cells };
+
+        state.init_particles(num_particles, aspect_ratio);
+
+        state
     }
 
-    pub fn update(&mut self, mouse_info: &MouseInfo) {
+    pub fn update(&mut self, mouse_position: Vec2, mouse_dragging: bool) {
         for _ in 0..SOLVER_STEPS {
             let t1 = benchmark!({self.cells.register_cells(&self.particles)});
             let t2 = benchmark!({self.compute_density_pressure()});
             let t3 = benchmark!({self.compute_force()});
-            let t4 = if *mouse_info.is_dragging.borrow() { benchmark!({self.mouse_force(mouse_info)}) } else { 0 };
+            let t4 = if mouse_dragging { benchmark!({self.mouse_force(mouse_position)}) } else { 0 };
             let t5 = benchmark!({self.handle_boundary()});
             let s = format!("{}us, {}us, {}us, {}us, {}us", t1, t2, t3, t4, t5);
             // log(&s);
@@ -117,15 +121,16 @@ impl State {
         // self.handle_boundary();
     }
 
-    fn mouse_force(&mut self, mouse_info: &MouseInfo) {
-        let mouse_vec = Vec2::new(
-            *mouse_info.mouse_x.borrow(), 
-            *mouse_info.mouse_y.borrow()
-        );
+    fn get_mouse_radius(&self) -> f32 {
+        // 0.08 + (self.particles.len() as f32 - 3000.0) / 200000.0
+        self.field.height / 5.0
+    }
 
+    fn mouse_force(&mut self, mouse_vec: Vec2) {
+        let mouse_radius = self.get_mouse_radius();
         self.particles.par_iter_mut().for_each(|particle|{
             let dx = mouse_vec - particle.position;
-            if dx.length() < MOUSE_RADIUS {
+            if dx.length() < mouse_radius {
                 let dir = dx.normalize_or_zero();
                 particle.force += MOUSE_FORCE_STRENGTH * dir;
             }
@@ -161,7 +166,6 @@ impl State {
     fn compute_density_pressure(&mut self) {
         let particles_copy = self.particles.clone();
         let cells = &self.cells;
-        let counter = &self.counter;
 
         self.particles
             .par_iter_mut()
@@ -203,7 +207,6 @@ impl State {
 
     fn compute_force(&mut self) {
         let particles_copy = self.particles.clone();
-        let counter = &self.counter;
 
         self.particles
             .par_iter_mut()
@@ -238,41 +241,61 @@ impl State {
             });
     }
 
-    fn init_particles(num_particles: u32, field: &Field) -> Vec<Particle> {
-        let mut particles = Vec::new();
-        particles.reserve(num_particles as usize);
+    fn clear(&mut self) {
+        self.particles.clear();
+        self.neighbors.clear();
+    }
+
+    fn add_particle(&mut self, position: Vec2) {
+        let velocity = Vec2::new(0.0, 0.0);
+        let force = Vec2::new(0.0, 0.0);
+        let pressure = 0.0;
+        let near_pressure = 0.0;
+        let density = 0.0;
+        let near_density = 0.0;
+        let size = PARTICLE_SIZE;
+
+        self.particles.push(Particle{position, velocity, force, pressure, near_pressure, density, near_density, size});
+        self.neighbors.push(Vec::new());
+    }
+
+    pub fn height_from_num_particles(num_particles: u32) -> f32 { 
+        // Determined experimentally
+        0.4 + (num_particles as f32 - 3000.0) / 30000.0
+        // 0.7
+    }
+
+    pub fn init_particles(&mut self, num_particles: u32, aspect_ratio: f32) {
+        self.clear();
+        self.particles.reserve(num_particles as usize);
+        let height = Self::height_from_num_particles(num_particles);
+        let width = height * aspect_ratio;
+        log(&height.to_string());
+        log(&width.to_string());
+        self.field = Field { height, width };
+        self.cells = Cells::new(height, width, KERNEL_RADIUS);
 
         let seed = 12345; 
         let mut rng = StdRng::seed_from_u64(seed);
 
         let mut y = 20.0 * KERNEL_RADIUS;
         loop {
-            let mut x = field.width * 0.1;
+            let mut x = self.field.width * 0.1;
             loop {
-                let position = Vec2::new(x, y);
-                let velocity = Vec2::new(0.0, 0.0);
-                let force = Vec2::new(0.0, 0.0);
-                let pressure = 0.0;
-                let near_pressure = 0.0;
-                let density = 0.0;
-                let near_density = 0.0;
-                let size = PARTICLE_SIZE;
-                particles.push(Particle{ position, velocity, force, pressure, near_pressure, density, near_density, size });
+                self.add_particle(Vec2::new(x, y));
                 x += PARTICLE_SIZE + 0.0001 * rng.gen::<f32>();
-                if x > field.width * 0.9 {
+                if x > self.field.width * 0.9 {
                     break;
                 }
-                if particles.len() == num_particles as usize {
+                if self.particles.len() == num_particles as usize {
                     break;
                 }
             }
-            if particles.len() == num_particles as usize {
+            if self.particles.len() == num_particles as usize {
                 break;
             }
             y += PARTICLE_SIZE;
         }
-
-        particles
     }
 }
 

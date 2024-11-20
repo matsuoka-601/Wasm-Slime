@@ -1,6 +1,7 @@
 mod utils;
 mod solver;
 
+use core::num;
 use std::char::MAX;
 
 use wasm_bindgen::prelude::*;
@@ -22,16 +23,15 @@ extern "C" {
 
 static VERTEX_SHADER: &'static str = r#"
     varying highp vec3 vLighting;
-    attribute vec2 aPosition;
+    attribute vec3 aPosition;
     attribute vec3 aColor; 
     varying vec3 vColor; 
     uniform vec2 uResolution;
-    uniform float uRadius;
 
     void main() {
-        vec2 position = (aPosition / uResolution) * 2.0 - 1.0;
+        vec2 position = (aPosition.xy / uResolution) * 2.0 - 1.0;
         gl_Position = vec4(position, 0, 1);
-        float radius = uRadius * 0.8;
+        float radius = aPosition.z * 0.8;
         gl_PointSize = radius * 2.0;
         vColor = aColor; 
     }
@@ -60,6 +60,8 @@ pub struct Simulation {
     buffers: BufferPair, 
     state: solver::State, 
     mouse_info: MouseInfo, 
+    button_pressed: Rc<RefCell<bool>>, 
+    window_size: WindowSize, 
     scale: f32, 
 }
 
@@ -80,8 +82,6 @@ struct WindowSize {
     height: f32, 
 }
 
-const NUM_PARTICLES: u32 = 12000;
-const FIELD_HEIGHT: f32 = 0.8;
 const MAX_SPEED: f32 = 4.0;
 
 macro_rules! benchmark {
@@ -93,14 +93,15 @@ macro_rules! benchmark {
 }
 
 impl Simulation {
-    pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<Simulation, JsValue> {
+    pub fn new(canvas: &web_sys::HtmlCanvasElement, num_particles: u32) -> Result<Simulation, JsValue> {
         let window_size = get_window_size()?;
-        let scale = window_size.height / FIELD_HEIGHT;
-        let (gl, buffers) = init_webgl(canvas, &window_size, scale)?;
-        let field = solver::Field{ width: FIELD_HEIGHT * (window_size.width / window_size.height), height: FIELD_HEIGHT };
-        let state = solver::State::new(NUM_PARTICLES, field);
-        let mouse_info = MouseInfo::new(canvas, scale)?;
-        Ok(Simulation{ gl, buffers, state, mouse_info, scale })
+        let scale = window_size.height / solver::State::height_from_num_particles(num_particles);
+        let (gl, buffers) = init_webgl(canvas, &window_size)?;
+        let aspect_ratio = window_size.width / window_size.height;
+        let state = solver::State::new(num_particles, aspect_ratio);
+        let button_pressed = init_button_info()?;
+        let mouse_info = MouseInfo::new(canvas)?;
+        Ok(Simulation{ gl, buffers, state, mouse_info, button_pressed, window_size, scale })
     }
 
     pub fn draw(&self) {
@@ -129,14 +130,21 @@ impl Simulation {
                 WebGl2RenderingContext::DYNAMIC_DRAW
             );
         }
-        self.gl.draw_arrays(WebGl2RenderingContext::POINTS, 0, self.state.num_particles as i32);
+        self.gl.draw_arrays(WebGl2RenderingContext::POINTS, 0, self.state.particles.len() as i32);
+    }
+
+    fn reset(&mut self, num_particles: u32) {
+        self.state.init_particles(num_particles, self.window_size.width / self.window_size.height);
+        self.scale = self.window_size.height / solver::State::height_from_num_particles(num_particles);
+        *self.button_pressed.borrow_mut() = false;
     }
 
     fn generate_positions(&self) -> Vec<f32> {
         self.state.particles.iter().flat_map(|particle|{
             let x = particle.position.x * self.scale;
             let y = particle.position.y * self.scale;
-            vec![ x, y ]
+            let r = solver::PARTICLE_SIZE * self.scale;
+            vec![ x, y, r ]
         }).collect()
     }
 
@@ -148,14 +156,15 @@ impl Simulation {
     }
 
     pub fn step(&mut self) {
-        let t = benchmark!({self.state.update(&self.mouse_info)});
+        let mouse_vec = glam::Vec2::new(*self.mouse_info.mouse_x.borrow() / self.scale, self.state.field.height - *self.mouse_info.mouse_y.borrow() / self.scale);
+        let t = benchmark!({self.state.update(mouse_vec, *self.mouse_info.is_dragging.borrow())});
         let s = format!("{} ms", t / 1000);
         log(&s);
     }
 }
 
 impl MouseInfo {
-    pub fn new(canvas: &web_sys::HtmlCanvasElement, scale: f32) -> Result<MouseInfo, JsValue> {
+    pub fn new(canvas: &web_sys::HtmlCanvasElement) -> Result<MouseInfo, JsValue> {
         let mouse_x = Rc::new(RefCell::new(0.0));
         let mouse_y = Rc::new(RefCell::new(0.0));
         let is_dragging = Rc::new(RefCell::new(false));
@@ -165,8 +174,8 @@ impl MouseInfo {
             let mouse_y = mouse_y.clone();
             add_event_listener(&canvas, "mousemove", move |event| {
                 let mouse_event = event.dyn_into::<web_sys::MouseEvent>().unwrap();
-                *mouse_x.borrow_mut() = mouse_event.offset_x() as f32 / scale;
-                *mouse_y.borrow_mut() = FIELD_HEIGHT - mouse_event.offset_y() as f32 / scale;
+                *mouse_x.borrow_mut() = mouse_event.offset_x() as f32;
+                *mouse_y.borrow_mut() = mouse_event.offset_y() as f32;
             })?;
         }
 
@@ -197,12 +206,30 @@ impl MouseInfo {
 
 }
 
+fn init_button_info() -> Result<Rc<RefCell<bool>>, JsValue> {
+    let button_pressed = Rc::new(RefCell::new(false));
+    let document = window().document().unwrap();
+    let button_element = document.get_element_by_id("reset-button").ok_or(JsValue::from("reset-button doesn't exist"))?;
+    {
+        let button_pressed_clone = button_pressed.clone();
+        add_event_listener(&button_element, "click", move |event| {
+            *button_pressed_clone.borrow_mut() = true;
+        });
+    }
+    Ok(button_pressed)
+}
+
 #[wasm_bindgen]
 pub fn start() -> Result<(), JsValue> {
     let canvas = get_canvas_element_by_id("canvas")?;
-    let mut sim = Simulation::new(&canvas)?;
+    let num_particles = get_particle_count().unwrap();
+    let mut sim = Simulation::new(&canvas, num_particles)?;
 
     start_animation(move||{
+        if *sim.button_pressed.borrow() {
+            let num_particles = get_particle_count().unwrap();
+            sim.reset(num_particles);
+        }
         sim.step();
         sim.draw();
     });
@@ -219,6 +246,14 @@ fn get_window_size() -> Result<WindowSize, JsValue> {
     let width = window.inner_width()?.as_f64().unwrap() as f32;
     let height = window.inner_height()?.as_f64().unwrap() as f32;
     Ok(WindowSize { width, height })
+}
+
+fn get_particle_count() -> Result<u32, JsValue> {
+    let document = window().document().unwrap();
+    let element = document.get_element_by_id("slider-value")
+        .ok_or(JsValue::from("slider-value doesn't exist."))?;
+    let text_content = element.text_content().unwrap();
+    Ok(text_content.trim().parse::<u32>().unwrap())
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
@@ -241,7 +276,7 @@ where T: 'static + FnMut()
 }
 
 fn get_canvas_element_by_id(id: &str) -> Result<web_sys::HtmlCanvasElement, JsValue> {
-    let document = web_sys::window().unwrap().document().unwrap();
+    let document = window().document().unwrap();
     document.get_element_by_id(id)
         .ok_or(JsValue::from("Element doesn't exist."))?
         .dyn_into::<web_sys::HtmlCanvasElement>()
@@ -281,7 +316,6 @@ fn get_color_by_speed(speed: f32) -> (f32, f32, f32, f32) {
 fn init_webgl(
     canvas: &web_sys::HtmlCanvasElement, 
     window_size: &WindowSize, 
-    scale: f32
 ) -> Result<(WebGl2RenderingContext, BufferPair), JsValue> {
     canvas.set_height(window_size.height as u32);
     canvas.set_width(window_size.width as u32);
@@ -304,8 +338,6 @@ fn init_webgl(
 
     let resolution_location = gl.get_uniform_location(&shader_program, "uResolution").unwrap();
     gl.uniform2f(Some(&resolution_location), canvas.width() as f32, canvas.height() as f32);
-    let radius_location = gl.get_uniform_location(&shader_program, "uRadius").unwrap();
-    gl.uniform1f(Some(&radius_location), scale * solver::PARTICLE_SIZE as f32);
 
     Ok((gl, BufferPair{ position_buffer, color_buffer }))
 }
@@ -356,7 +388,7 @@ fn set_position_attribute(
     let position_location = gl.get_attrib_location(program, "aPosition");
 
     if position_location >= 0 {
-        gl.vertex_attrib_pointer_with_i32(position_location as u32, 2, WebGl2RenderingContext::FLOAT, false, 0, 0);
+        gl.vertex_attrib_pointer_with_i32(position_location as u32, 3, WebGl2RenderingContext::FLOAT, false, 0, 0);
         gl.enable_vertex_attrib_array(position_location as u32);
     } else {
         return Err(JsValue::from_str("cannot set position attribute"));

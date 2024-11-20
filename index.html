@@ -24,7 +24,7 @@
             position: fixed; /* 固定位置 */
             top: 0; /* 上端に配置 */
             left: 0; /* 左端に配置 */
-            width: 500px; /* スライダーの幅 */
+            width: 300px; /* スライダーの幅 */
             margin: 20px; /* 少し余白を追加 */  
         }
 
@@ -114,7 +114,7 @@
         <div id="slider-text">Number of particles (reset to change)</div>
         <div id="slider-wrapper">
             <div id="slider"></div> <!-- スライダー -->
-            <div id="slider-value">6000</div> <!-- 値表示 -->
+            <div id="slider-value"></div> <!-- 値表示 -->
         </div>
         <button id="reset-button">Reset</button>
         <div id="thread-count"></div>
@@ -124,13 +124,16 @@
         const slider = document.getElementById('slider');
         const sliderValue = document.getElementById('slider-value');
 
+        start = 10000;
+        sliderValue.textContent = start;
+
         noUiSlider.create(slider, {
             range: {
                 min: 3000, // 最小値
                 max: 30000 // 最大値
             },
             step: 500, // 刻み幅
-            start: 6000, 
+            start: start, 
             connect: [true, false], // 左側を塗りつぶす（つまみが1つのみ）
             animate: false
         });
