@@ -188,13 +188,13 @@ impl State {
                         for j in &cells.cells[grid_id] {
                             // counter.fetch_add(1, Ordering::SeqCst);
                             let pj = &particles_copy[*j as usize];
-                            let r = (pj.position - pi.position).length();
-                            if r < KERNEL_RADIUS {
-                                let a = KERNEL_RADIUS_SQ - r * r;
+                            let r2 = (pj.position - pi.position).length_squared();
+                            if r2 < KERNEL_RADIUS_SQ {
+                                let a = KERNEL_RADIUS_SQ - r2;
                                 particle.density += MASS * SPIKY_POW2 * a * a;
                                 particle.near_density += MASS * SPIKY_POW3 * a * a * a;
-                                if EPS < r {
-                                    neighbors.push(Neighbor{j: *j, r});
+                                if EPS * EPS < r2 {
+                                    neighbors.push(Neighbor{j: *j, r: r2.sqrt()});
                                 }
                             }
                         }
@@ -223,9 +223,9 @@ impl State {
     
                     // Pressure
                     let a = KERNEL_RADIUS - *r;
-                    let shared_pressure = (pi.pressure + pj.pressure) / 2.0;
+                    let shared_pressure = (pi.pressure + pj.pressure) * 0.5;
                     let press_coeff = -MASS * shared_pressure * SPIKY_POW2_GRAD * a / pj.density;
-                    let near_shared_pressure = (pi.near_pressure + pj.near_pressure) / 2.0;
+                    let near_shared_pressure = (pi.near_pressure + pj.near_pressure) * 0.5;
                     let near_press_coeff = -MASS * near_shared_pressure * SPIKY_POW3_GRAD * a * a / pj.near_density; 
                     fpress += (press_coeff + near_press_coeff) * rij.normalize();
 
