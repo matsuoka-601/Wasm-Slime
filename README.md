@@ -31,3 +31,13 @@ But in some environments, webpack seems to cause some errors (see [this issue](h
 	- before: `app.use(express.static(__dirname + '/dist/'));`
 	- after: `app.use(express.static(__dirname));`
 - Remove the line `import { simd } from 'wasm-feature-detect';` in `index.js`
+## References
+- [Coding Adventure: Simulating Fluids](https://www.youtube.com/watch?v=rSKMYc1CQHE&t=877s)
+	- This is a video that gave me an motivation to implement this project.
+- [Particle-Based Fluid Simulation for Interactive Applications, Müller et al. 2003](https://matthias-research.github.io/pages/publications/sca03.pdf)
+	- Basically, the fluid simulation in this project is based on this paper.
+- [Particle-based Viscoelastic Fluid Simulation, Clavet et al. 2005](https://www.ljll.fr/~frey/papers/levelsets/Clavet%20S.,%20Particle-based%20viscoelastic%20fluid%20simulation.pdf)
+	- Techniques called near density and near pressure are also implemented that is presented in this paper. These techniques are useful to realize a force like a surface tension.
+- SPH implementations and articles by Lucas V. Schuermann helped me a lot.
+	- [Implementing SPH in 2D](https://lucasschuermann.com/writing/implementing-sph-in-2d)
+ 	- [mueller-sph](https://github.com/lucas-schuermann/mueller-sph)	
