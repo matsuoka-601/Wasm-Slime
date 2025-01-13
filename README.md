@@ -1,4 +1,4 @@
-# wasm-fluid-simulation
+# wasm-slime
 
 A 2d fluid simulator implemented with Rust + wasm-bindgen-rayon. 
 
